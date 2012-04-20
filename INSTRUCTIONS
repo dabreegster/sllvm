@@ -1,0 +1,10 @@
+1) Build
+  - Try './build'
+  - No external dependencies, so just 'scalac llvm/*'
+  - An ant or sbt makefile will exist eventually
+
+2) Run EchoTest (parses IR and then emits it again)
+  - Try './test'
+
+3) Write your own analysis
+  - llvm.Parser.parse(filename) gives you a Module; take it from there

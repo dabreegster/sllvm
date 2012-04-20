@@ -1,0 +1,6 @@
+#!/bin/sh
+
+INPUT=~/ut/ptr_a/tests/passes4.s
+
+./build
+scala -cp .build llvm.EchoTest $INPUT

@@ -1,0 +1,5 @@
+#!/bin/sh
+
+#echo Building SLLVM...
+mkdir -p .build
+fsc -d .build `find llvm/ -name '*.scala' -print | xargs`
