@@ -10,6 +10,7 @@ abstract class Value() {
 
   // TODO do we want distinction between printing just name and whole line?
 
+  // TODO the difference between these 3 is slightly annoying
   def id = "%" + name.get
   def full_name = ltype + " " + id
   def ir_form(): String

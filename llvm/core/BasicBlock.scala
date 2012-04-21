@@ -16,6 +16,6 @@ class BasicBlock() extends Value() {
   def ir_header = if (is_entry)
                     ""
                   else
-                    "; <label>:" + name.get + "\t\t\t; preds = " +
+                    "\n; <label>:" + name.get + "\t\t\t; preds = " +
                     preds.map(_.id).mkString(", ") + "\n"
 }

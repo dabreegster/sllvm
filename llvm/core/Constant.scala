@@ -7,6 +7,7 @@ class ConstantInt(val n: Int) extends Constant() {
   ltype = IntegerType(32) // TODO what bitwidth?
 
   def ir_form = n.toString
+  override def id = n.toString
   override def full_name = ltype + " " + n
 }
 
@@ -16,6 +17,7 @@ class ConstantFP() extends Constant() {
   ltype = DoubleType()  // TODO or FloatType?
 
   def ir_form = n.toString
+  override def id = n.toString
   override def full_name = ltype + " " + n
 }
 

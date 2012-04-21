@@ -50,9 +50,10 @@ class BranchInst() extends TerminatorInst() {
   )
 }
 class AllocaInst() extends Instruction() {
-  // TODO does the type handle this, or does it return ptr to that type?
+  // ltype is a pointer to whatever was allocated
 
-  def ir_form = "alloca " + ltype   // TODO alignment
+  def alloced_type = ltype.deref
+  def ir_form = "alloca " + alloced_type   // TODO alignment
 }
 
 class StoreInst() extends Instruction() {
@@ -80,7 +81,7 @@ class IcmpInst() extends Instruction() {
   ltype = IntegerType(1)
 
   def val_type = val1.ltype
-  def ir_form = "icmp %s %s %s, %s".format(op, val_type, val1.id, val1.id)
+  def ir_form = "icmp %s %s %s, %s".format(op, val_type, val1.id, val2.id)
 }
 
 class PHIInst() extends Instruction() {

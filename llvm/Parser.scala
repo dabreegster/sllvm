@@ -151,7 +151,6 @@ object Parser extends JavaTokenParsers {
                 }
 
   // TODO why does the type get erased when involved with disjunctions?
-  // TODO distinguish exactly what values are
   def cast_inst(x: Any): Instruction = x match {
     case i: Instruction => i
     case _              => throw new Exception("or " + x.getClass)
@@ -178,7 +177,6 @@ object Parser extends JavaTokenParsers {
                    }
                  }
   def inst = (alloca_inst | store_inst | load_inst | icmp_inst | phi_inst | call_inst)
-  // TODO deal with constants too
   def local_id = "%" ~> """[\d\w]+""".r
   def local_id_lookup = local_id ^^ { case id => symbol_table(id) }
   def label = "%" ~> wholeNumber  // for BBs
@@ -189,11 +187,11 @@ object Parser extends JavaTokenParsers {
   def alloca_inst = ("alloca" ~> ir_type ~ "," ~ alignment) ^^
                     { case t~","~a => {
                         val a = new AllocaInst()
-                        a.ltype = t
+                        a.ltype = t.ptr_to
                         a
                       }
                     }
-  def alignment   = "align" ~ "4" // TODO generalize me
+  def alignment   = "align" ~ wholeNumber
   def store_inst  = "store" ~> ir_type ~ value ~ "," ~ ir_type ~ value <~
                     opt("," ~ alignment) ^^
                     { case st~sv~","~dt~dv => {
@@ -208,9 +206,9 @@ object Parser extends JavaTokenParsers {
   def load_inst   = "load" ~> ir_type ~ value <~ opt("," ~ alignment) ^^
                     { case t~sv => {
                         val l = new LoadInst()
-                        assert_eq(t, sv.ltype)  // TODO ptr
+                        assert_eq(t, sv.ltype)  // TODO ptr?
                         l.src = sv
-                        l.ltype = t
+                        l.ltype = t.deref
                         l
                       }
                     }
