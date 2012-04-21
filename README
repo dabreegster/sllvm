@@ -2,3 +2,33 @@ sllvm
 =====
 
 A partial port of the LLVM infrastructure to Scala
+
+Introduction
+============
+
+Some analyses on LLVM (http://llvm.org/) IR could be more conveniently and
+succintly written in Scala. SLLVM is not intended to be bindings (see
+https://bitbucket.org/eligottlieb/jllvm for Java bindings) or a complete port of
+the framework. Rather, analyses in SLLVM are intended to augment the existing
+C++ pass system. SLLVM is also not a convenient way for generating LLVM IR; for
+that, see http://code.google.com/p/slem/.
+
+LLVM Model
+==========
+
+TODO: describe class hierarchy briefly
+
+SLLVM aims to present a simpler version of the API. Some differences currently
+include:
+  * The GlobalValue class does not exist
+  * Function subclasses Value, not GlobalValue
+
+Roadmap
+=======
+
+More detail in TODO. The overall goal is to support a future pointer analysis
+framework.
+
+* Parse/re-emit IR
+* Interactive graphviz visualization of IR
+* Accumulate convenience methods for core constructs

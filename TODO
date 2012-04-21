@@ -2,20 +2,20 @@
 # TODO #
 ########
 
-- Build script(s)
-- write a README rationalizing and explaining deviations from llvm
+- LLVM support
+  - ref: http://llvm.org/docs/LangRef.html
+  - get types to work
+  - globals
+  - retain more aux info to make parsing/printing IR idempotent
+    - alignment, target lines, etc
 
 - Prettyprinting LLVM (non IR-dump toString)
 - graphviz
 
 - "Pass" to split BBs at a CallInst
 
-- LLVM features
-  - ref: http://llvm.org/docs/LangRef.html
-  - globals
-  - retain more aux info to make parsing/printing IR idempotent
-    - alignment, target lines, etc
-
 - Immutable construction
   - Type-safe builder pattern?
     http://nullary.blogspot.com/2011/10/builder-pattern-revisited-in-scala.html
+
+- Build script(s)
