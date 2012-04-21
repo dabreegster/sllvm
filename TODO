@@ -4,7 +4,6 @@
 
 - LLVM support
   - ref: http://llvm.org/docs/LangRef.html
-  - get types to work
   - globals
   - retain more aux info to make parsing/printing IR idempotent
     - alignment, target lines, etc

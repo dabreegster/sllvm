@@ -12,10 +12,7 @@ import java.io.FileReader
 // TODO do the assertions in the actual values, not parsing
 
 object Parser extends JavaTokenParsers {
-  // TODO util class
-  //private def assert_eq(a: Any, b: Any) = assert(a == b, a + " != " + b)
-  // TODO enable this once types work
-  private def assert_eq(a: Any, b: Any) = {}
+  private def assert_eq(a: Any, b: Any) = assert(a == b, a + " != " + b)
 
   // TODO can't use <~ and ~> to get rid of every junk token, unfortunately
   // TODO globals and other things from http://llvm.org/docs/LangRef.html
@@ -73,8 +70,8 @@ object Parser extends JavaTokenParsers {
                  }
   def function_name = "@" ~> ident
   def param_list = "(" ~> repsep(param_pair, ",") <~ ")"
-  def param_pair = (ir_type ~ "%" ~ ident) ^^
-                   { case t~"%"~n => {
+  def param_pair = (ir_type ~ local_id) ^^
+                   { case t~n => {
                        val p = new Parameter()
                        p.name = Some(n)
                        p.ltype = t
@@ -247,8 +244,8 @@ object Parser extends JavaTokenParsers {
                       }
                     }
   def arg_list    = "(" ~> repsep(arg, ",") <~ ")"
-  def arg         = ir_type ~ "%" ~ value ^^
-                    { case t~"%"~v => {
+  def arg         = ir_type ~ value ^^
+                    { case t~v => {
                         assert_eq(t, v.ltype)
                         v
                       }
