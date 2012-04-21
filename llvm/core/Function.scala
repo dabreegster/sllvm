@@ -10,7 +10,8 @@ class Function() extends Value() {
 
   // TODO user means somebody calls it
   // TODO iterate through flat list of instructions
-  override def id = "@" + name
+  override def id = "@" + name.get
+  override def full_name = ret_type + " " + id
   def ir_form = "define " + full_name + "(" +
                 params.map(_.full_name).mkString(", ") + ") {\n" +
                 blocks.map(_.ir_form).mkString("\n") + "\n}\n"

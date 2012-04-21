@@ -8,7 +8,7 @@ class BasicBlock() extends Value() {
   var parent: Function = null
 
   def instructions = inst_ls ++ List(term_inst) // TODO more efficiently
-  def label = name
+  def label = name.get
   def succs = term_inst.succs
   def is_entry = preds.isEmpty  // TODO should only happen when name == "0"
 
@@ -16,6 +16,6 @@ class BasicBlock() extends Value() {
   def ir_header = if (is_entry)
                     ""
                   else
-                    "; <label>:" + name + "\t\t\t; preds = " +
+                    "; <label>:" + name.get + "\t\t\t; preds = " +
                     preds.map(_.id).mkString(", ") + "\n"
 }

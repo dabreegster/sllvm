@@ -2,7 +2,7 @@ package llvm.core
 
 abstract class Value() {
   // TODO constructor
-  var name: String = null
+  var name: Option[String] = None
   var ltype: Type = null
   // TODO make up a name if we don't have one
 
@@ -10,8 +10,11 @@ abstract class Value() {
 
   // TODO do we want distinction between printing just name and whole line?
 
-  def id = "%" + name
+  def id = "%" + name.get
   def full_name = ltype + " " + id
   def ir_form(): String
-  override def toString = "%%%s = %s".format(name, ir_form)
+  override def toString = name match {
+    case Some(n) => "%%%s = %s".format(n, ir_form)
+    case None    => ir_form
+  }
 }

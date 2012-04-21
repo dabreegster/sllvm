@@ -2,5 +2,5 @@
 
 INPUT=~/ut/ptr_a/tests/passes4.s
 
-./build
+./build &&
 scala -cp .build llvm.EchoTest $INPUT

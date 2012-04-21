@@ -37,7 +37,7 @@ object Parser extends JavaTokenParsers {
       return bb_table(key)
     } else {
       val b = new BasicBlock()
-      b.name = key
+      b.name = Some(key)
       bb_table(key) = b
       return b
     }
@@ -46,7 +46,7 @@ object Parser extends JavaTokenParsers {
   def module = comment ~> rep(target) ~> rep(function) ^^
                { case fxns => {
                    val m = new Module()
-                   m.fxn_table = fxns.map(f => (f.name, f)).toMap
+                   m.fxn_table = fxns.map(f => (f.name.get, f)).toMap
                    // TODO set up globals too
                    m
                  }
@@ -58,7 +58,7 @@ object Parser extends JavaTokenParsers {
                  function_attribs ~ "{" ~ rep(bb) <~ "}" ^^
                  { case t~n~p~a~"{"~b => {
                      val f = new Function()
-                     f.name = n
+                     f.name = Some(n)
                      f.ret_type = t
                      f.params = p
                      p.foreach(_.parent = f)
@@ -67,7 +67,7 @@ object Parser extends JavaTokenParsers {
                      // Clear the symbol table for the next function's locals
                      symbol_table.clear
                      bb_table.clear
-                     fxn_table(f.name) = f
+                     fxn_table(n) = f
                      f
                    }
                  }
@@ -76,9 +76,9 @@ object Parser extends JavaTokenParsers {
   def param_pair = (ir_type ~ "%" ~ ident) ^^
                    { case t~"%"~n => {
                        val p = new Parameter()
-                       p.name = n
+                       p.name = Some(n)
                        p.ltype = t
-                       symbol_table(p.name) = p
+                       symbol_table(n) = p
                        p
                      }
                    }
@@ -166,14 +166,14 @@ object Parser extends JavaTokenParsers {
                  {
                    case name~"="~raw_i => {
                      val i = cast_inst(raw_i)
-                     i.name = name.toString
+                     i.name = Some(name.toString)
                      // add it to the symbol table
                      symbol_table(name.toString) = i
                      i
                    }
                    case raw_i => {
                      val i = cast_inst(raw_i)
-                     i.name = "nameless"  // TODO auto assign one?
+                     i.name = None
                      i
                    }
                  }
@@ -210,12 +210,14 @@ object Parser extends JavaTokenParsers {
                         val l = new LoadInst()
                         assert_eq(t, sv.ltype)  // TODO ptr
                         l.src = sv
+                        l.ltype = t
                         l
                       }
                     }
   def icmp_inst   = "icmp" ~> icmp_op ~ ir_type ~ value ~ "," ~ value ^^
                     { case o~t~v1~","~v2 => {
                         val i = new IcmpInst()
+                        i.op = o
                         assert_eq(t, v1.ltype)
                         assert_eq(t, v2.ltype)
                         i.val1 = v1
@@ -226,10 +228,11 @@ object Parser extends JavaTokenParsers {
   def icmp_op     = ("eq" | "ne" | "ugt" | "uge" | "ult" | "ule" |
                      "sgt" | "sge" | "slt" | "sle")
   def phi_inst    = "phi" ~> ir_type ~ repsep(phi_case, ",") ^^
-                    { case t~c => {
+                    { case t~cases => {
                         val p = new PHIInst()
-                        c.foreach(c => assert_eq(c._1.ltype, t))
-                        p.cases = c.map(c => (c._1, lookup_bb(c._2)))
+                        cases.foreach(c => assert_eq(c._1.ltype, t))
+                        p.cases = cases.map(c => (c._1, lookup_bb(c._2)))
+                        p.ltype = t
                         p
                       }
                     }
@@ -240,6 +243,7 @@ object Parser extends JavaTokenParsers {
                         val c = new CallInst()
                         c.fxn = fxn_table(n)  // TODO might not be there yet
                         assert_eq(t, c.fxn.ret_type)
+                        c.ltype = t
                         c.args = a
                         c
                       }

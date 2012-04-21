@@ -6,7 +6,8 @@ class ConstantInt(val n: Int) extends Constant() {
   // TODo some kind of AP int knockoff?
   ltype = IntegerType(32) // TODO what bitwidth?
 
-  def ir_form = n.toString  // TODO type or not?
+  def ir_form = n.toString
+  override def full_name = ltype + " " + n
 }
 
 class ConstantFP() extends Constant() {
@@ -14,7 +15,8 @@ class ConstantFP() extends Constant() {
   var n: Double = -1
   ltype = DoubleType()  // TODO or FloatType?
 
-  def ir_form = n.toString  // TODO type or not?
+  def ir_form = n.toString
+  override def full_name = ltype + " " + n
 }
 
 // TODO constant arrays and structs

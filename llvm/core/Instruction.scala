@@ -14,6 +14,7 @@ abstract class Instruction() extends User() {
 abstract class TerminatorInst() extends Instruction() {
   // TODO constructor
   var succs: List[BasicBlock] = Nil
+  name = None
 }
 
 class ReturnInst() extends TerminatorInst() {
@@ -45,7 +46,7 @@ class BranchInst() extends TerminatorInst() {
   var false_target: BasicBlock = null
 
   def ir_form = "br %s, label %s, label %s".format(
-    test_val.full_name, true_target.full_name, false_target.full_name
+    test_val.full_name, true_target.id, false_target.id
   )
 }
 class AllocaInst() extends Instruction() {
@@ -76,6 +77,7 @@ class IcmpInst() extends Instruction() {
   var op: String = null // TODO enum
   var val1: Value = null
   var val2: Value = null
+  ltype = IntegerType(1)
 
   def val_type = val1.ltype
   def ir_form = "icmp %s %s %s, %s".format(op, val_type, val1.id, val1.id)
@@ -85,8 +87,7 @@ class PHIInst() extends Instruction() {
   // TODO constructor
   var cases: List[(Value, BasicBlock)] = Nil
 
-  def val_type = cases.head._1.ltype
-  def ir_form = "phi " + val_type + cases.map(
+  def ir_form = "phi " + ltype + cases.map(
     c => "[ %s, %s ]".format(c._1.id, c._2.id)
   ).mkString(", ")
 }
