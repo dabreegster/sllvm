@@ -24,6 +24,8 @@ object Parser extends JavaTokenParsers {
 
   // for local values
   private val symbol_table = new HashMap[String, Value]()
+  // for global values
+  private val global_table = new HashMap[String, GlobalVariable]()
   // for local BBs
   private val bb_table = new HashMap[String, BasicBlock]()
   // for all functions
@@ -40,16 +42,30 @@ object Parser extends JavaTokenParsers {
     }
   }
 
-  def module = comment ~> rep(target) ~> rep(function) ^^
-               { case fxns => {
+  def module = comment ~> rep(target) ~> rep(global_decl) ~ rep(function) ^^
+               { case globals~fxns => {
                    val m = new Module()
                    m.fxn_table = fxns.map(f => (f.name.get, f)).toMap
-                   // TODO set up globals too
+                   m.global_table = globals.map(g => (g.name.get, g)).toMap
                    m
                  }
                }
   def comment = """;.*""".r
   def target  = """target.*""".r
+
+  def global_decl = global_id ~ "= global" ~ ir_type ~ constant ~ "," ~ alignment ^^
+                    { case n~_~t~c~","~a => {
+                        val g = new GlobalVariable()
+                        g.ltype = t.ptr_to
+                        g.name = Some(n)
+                        g.default_val = c
+                        // add it to the symbol table
+                        global_table(n) = g
+                        g
+                      }
+                    }
+  def global_id = "@" ~> """[\d\w]+""".r
+  def global_id_lookup = global_id ^^ { case id => global_table(id) }
 
   def function = "define" ~> ir_type ~ function_name ~ param_list ~
                  function_attribs ~ "{" ~ rep(bb) <~ "}" ^^
@@ -85,9 +101,10 @@ object Parser extends JavaTokenParsers {
                 { case p~Nil   => p
                   case p~stars => PointerType(p, stars.size)
                 }
-  def prim_type = ("float" | "double" | """i\d+""".r) ^^
+  def prim_type = ("float" | "double" | "void" | """i\d+""".r) ^^
                   { case "float"  => FloatType()
                     case "double" => DoubleType()
+                    case "void"   => VoidType()
                     case int      => IntegerType(int.tail.toInt)
                   }
 
@@ -179,9 +196,9 @@ object Parser extends JavaTokenParsers {
   def label = "%" ~> wholeNumber  // for BBs
   def constant = constant_int
   def constant_int = wholeNumber ^^ { case n => new ConstantInt(n.toInt) }
-  def value = (local_id_lookup | constant)
+  def value = local_id_lookup | global_id_lookup | constant
 
-  def alloca_inst = ("alloca" ~> ir_type ~ "," ~ alignment) ^^
+  def alloca_inst = "alloca" ~> ir_type ~ "," ~ alignment ^^
                     { case t~","~a => {
                         val a = new AllocaInst()
                         a.ltype = t.ptr_to

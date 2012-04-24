@@ -1,6 +1,6 @@
 #!/bin/sh
 
-INPUT=~/ut/ptr_a/tests/passes4.s
+INPUT=examples/testglobal.s
 
 ./build &&
 scala -cp .build llvm.EchoTest $INPUT

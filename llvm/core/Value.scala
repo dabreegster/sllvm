@@ -15,7 +15,7 @@ abstract class Value() {
   def full_name = ltype + " " + id
   def ir_form(): String
   override def toString = name match {
-    case Some(n) => "%%%s = %s".format(n, ir_form)
+    case Some(n) => id + " = " + ir_form
     case None    => ir_form
   }
 }

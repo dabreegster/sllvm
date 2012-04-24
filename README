@@ -22,6 +22,7 @@ SLLVM aims to present a simpler version of the API. Some differences currently
 include:
   * The GlobalValue class does not exist
   * Function subclasses Value, not GlobalValue
+  * GlobalVariable is treated like an 'alloca' instruction in some sense
 
 Roadmap
 =======

@@ -2,9 +2,8 @@
 # TODO #
 ########
 
-- LLVM support
-  - ref: http://llvm.org/docs/LangRef.html
-  - globals
+- LLVM support (http://llvm.org/docs/LangRef.html)
+  - structs
   - retain more aux info to make parsing/printing IR idempotent
     - alignment, target lines, etc
 

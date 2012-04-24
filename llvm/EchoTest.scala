@@ -4,8 +4,6 @@ package llvm
 object EchoTest {
   def main(args: Array[String]) = {
     val module = Parser.parse(args(0))
-    for (fxn <- module.functions) {
-      println(fxn.ir_form)
-    }
+    println(module.ir_form)
   }
 }

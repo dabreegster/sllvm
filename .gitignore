@@ -1,2 +1,4 @@
 .build
 *.swp
+examples
+test_all
