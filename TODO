@@ -3,9 +3,13 @@
 ########
 
 - LLVM support (http://llvm.org/docs/LangRef.html)
-  - structs
+  - declarations...
+  - named types...
+  - fill out User operands
   - retain more aux info to make parsing/printing IR idempotent
     - alignment, target lines, etc
+
+- maybe builtins for malloc/scanf
 
 - Prettyprinting LLVM (non IR-dump toString)
 - graphviz
@@ -15,5 +19,6 @@
 - Immutable construction
   - Type-safe builder pattern?
     http://nullary.blogspot.com/2011/10/builder-pattern-revisited-in-scala.html
+  - lazys?
 
 - Build script(s)

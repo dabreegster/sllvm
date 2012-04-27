@@ -21,6 +21,17 @@ class ConstantFP() extends Constant() {
   override def full_name = ltype + " " + n
 }
 
+class ConstantString(s: String, size: Int) extends Constant() {
+  // TODO this should really be a case of ConstantArray
+  ltype = ArrayType(IntegerType(8), size)
+
+  def ir_form = "c\"" + s + "\""
+}
+
+//class ConstantArray() extends Constant() {
+  // TODO constructor
+//}
+
 // TODO constant arrays and structs
 
 // TODO in llvm, Function subclasses GlobalValue, which subclasses this

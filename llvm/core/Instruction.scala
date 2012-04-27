@@ -3,6 +3,7 @@ package llvm.core
 // TODO case classes?
 // TODO it's annoying to make everything take all these constructor params...
 // but probably not a huge deal.
+// TODO apply and unapply could almost parse/unparse...
 
 abstract class Instruction() extends User() {
   // TODO constructor
@@ -99,4 +100,21 @@ class CallInst() extends Instruction() {
   var args: List[Value] = Nil // TODO Parameter class?
 
   def ir_form = "call " + fxn.full_name + "(" + args.map(_.full_name).mkString(", ") + ")"
+}
+
+class BitcastInst() extends Instruction() {
+  // TODO constructor
+  var value: Value = null
+  // ltype is target_type
+
+  def ir_form = "bitcast " + value.full_name + " to " + ltype
+}
+
+class AddInst() extends Instruction() {
+  // TODO constructor
+  var v1: Value = null
+  var v2: Value = null
+
+  // TODO record the spec too
+  def ir_form = "add " + ltype + " " + v1 + ", " + v2
 }

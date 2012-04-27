@@ -15,7 +15,7 @@ object Parser extends JavaTokenParsers {
   private def assert_eq(a: Any, b: Any) = assert(a == b, a + " != " + b)
 
   // TODO can't use <~ and ~> to get rid of every junk token, unfortunately
-  // TODO globals and other things from http://llvm.org/docs/LangRef.html
+  // TODO other things from http://llvm.org/docs/LangRef.html
 
   def parse(fn: String): Module = parseAll(module, new FileReader(fn)) match {
     case Success(mod, rest) => mod
@@ -42,7 +42,19 @@ object Parser extends JavaTokenParsers {
     }
   }
 
-  def module = comment ~> rep(target) ~> rep(global_decl) ~ rep(function) ^^
+  def lookup_fxn(key: String): Function = {
+    if (fxn_table.contains(key)) {
+      return fxn_table(key)
+    } else {
+      val f = new Function()
+      f.name = Some(key)
+      fxn_table(key) = f
+      return f
+    }
+  }
+
+  def module = (comment ~> rep(target) ~> rep(type_decl) ~> rep(global_decl |
+                global_string) ~ rep(function)) ^^
                { case globals~fxns => {
                    val m = new Module()
                    m.fxn_table = fxns.map(f => (f.name.get, f)).toMap
@@ -52,6 +64,7 @@ object Parser extends JavaTokenParsers {
                }
   def comment = """;.*""".r
   def target  = """target.*""".r
+  def llvm_id = ("""[a-zA-Z$._][a-zA-Z$._0-9]*""".r | wholeNumber)
 
   def global_decl = global_id ~ "= global" ~ ir_type ~ constant ~ "," ~ alignment ^^
                     { case n~_~t~c~","~a => {
@@ -64,8 +77,27 @@ object Parser extends JavaTokenParsers {
                         g
                       }
                     }
-  def global_id = "@" ~> """[\d\w]+""".r
+  def global_string = global_id ~ "= private unnamed_addr constant [" ~
+                      wholeNumber ~ "x" ~ ir_type ~ "]" ~ constant_string ~
+                      ", " ~ alignment ^^
+                      {
+                        case name~_~num~"x"~t~"]"~s~_~_ => {
+                          val g = new GlobalVariable()
+                          g.ltype = ArrayType(t, num.toInt)
+                          g.name = Some(name)
+                          g.default_val = new ConstantString(s, num.toInt)
+                          // add to symbol table
+                          global_table(name) = g
+                          g
+                        }
+                      }
+  def constant_string = "c\"" ~> """[^"]*""".r <~ "\""
+            
+  def global_id = "@" ~> llvm_id
   def global_id_lookup = global_id ^^ { case id => global_table(id) }
+
+  def type_decl = local_id ~ "= type {" ~ repsep(ir_type, ",") <~ "}"
+  // TODO process above.
 
   def function = "define" ~> ir_type ~ function_name ~ param_list ~
                  function_attribs ~ "{" ~ rep(bb) <~ "}" ^^
@@ -95,17 +127,19 @@ object Parser extends JavaTokenParsers {
                        p
                      }
                    }
-  def function_attribs = opt("nounwind")
+  def function_attribs = opt("nounwind" | "noalias")
 
   def ir_type = prim_type ~ rep("*") ^^
                 { case p~Nil   => p
                   case p~stars => PointerType(p, stars.size)
                 }
-  def prim_type = ("float" | "double" | "void" | """i\d+""".r) ^^
-                  { case "float"  => FloatType()
-                    case "double" => DoubleType()
-                    case "void"   => VoidType()
-                    case int      => IntegerType(int.tail.toInt)
+  val int_type = """i(\d+)""".r
+  def prim_type = ("float" | "double" | "void" | int_type | local_id) ^^
+                  { case "float"      => FloatType()
+                    case "double"     => DoubleType()
+                    case "void"       => VoidType()
+                    case int_type(bw) => IntegerType(bw.toInt)
+                    case name         => NamedType(name)
                   }
 
   def bb_header = "; <label>:" ~> wholeNumber ~ "; preds =" ~
@@ -190,8 +224,9 @@ object Parser extends JavaTokenParsers {
                      i
                    }
                  }
-  def inst = (alloca_inst | store_inst | load_inst | icmp_inst | phi_inst | call_inst)
-  def local_id = "%" ~> """[\d\w]+""".r
+  def inst = (alloca_inst | store_inst | load_inst | icmp_inst | phi_inst |
+              call_inst | bitcast_inst | add_inst)
+  def local_id = "%" ~> llvm_id
   def local_id_lookup = local_id ^^ { case id => symbol_table(id) }
   def label = "%" ~> wholeNumber  // for BBs
   def constant = constant_int
@@ -250,11 +285,15 @@ object Parser extends JavaTokenParsers {
                     }
   def phi_case    = "[" ~> value ~ "," ~ label <~ "]" ^^
                     { case v~","~l => (v, l) }
-  def call_inst   = "call" ~> ir_type ~ function_name ~ arg_list ^^
+  def call_inst   = "call" ~> function_attribs ~> ir_type ~ function_name ~ arg_list <~
+                    function_attribs ^^
                     { case t~n~a => {
                         val c = new CallInst()
-                        c.fxn = fxn_table(n)  // TODO might not be there yet
-                        assert_eq(t, c.fxn.ret_type)
+                        c.fxn = lookup_fxn(n)
+                        // TODO we might have just autovivified the fxn...
+                        if (c.fxn.ret_type != null) {
+                          assert_eq(t, c.fxn.ret_type)
+                        }
                         c.ltype = t
                         c.args = a
                         c
@@ -267,4 +306,28 @@ object Parser extends JavaTokenParsers {
                         v
                       }
                     }
+  
+  def bitcast_inst = "bitcast"~>ir_type~value~"to"~ir_type ^^
+                     {
+                       case t1~v~"to"~t2 => {
+                         val b = new BitcastInst()
+                         b.value = v
+                         b.ltype = t2
+                         assert(v.ltype == t1)
+                         b
+                       }
+                     }
+
+  def add_inst = "add"~>add_specs~>ir_type~value~","~value ^^
+                 {
+                   case t~v1~_~v2 => {
+                     assert(v1.ltype == v2.ltype)
+                     val a = new AddInst()
+                     a.ltype = t
+                     a.v1 = v1
+                     a.v2 = v2
+                     a
+                   }
+                 }
+  def add_specs = opt("nuw")~opt("nsw")
 }

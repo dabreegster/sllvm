@@ -43,5 +43,7 @@ case class FunctionType(ret_type: Type, param_types: List[Type],
   override def toString = "f :: " + param_types + " -> " + ret_type
 }
 
+case class NamedType(name: String) extends Type() {} // TODO tmp.
+
 //class SequentialType[T <: Type]()                extends Type
 // TODO hard to parametrize that way
