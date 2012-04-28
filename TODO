@@ -5,7 +5,9 @@
 - LLVM support (http://llvm.org/docs/LangRef.html)
   - declarations...
   - named types...
+  - semantics of var-args
   - fill out User operands
+  - gep is hard
   - retain more aux info to make parsing/printing IR idempotent
     - alignment, target lines, etc
 

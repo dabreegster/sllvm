@@ -77,15 +77,14 @@ object Parser extends JavaTokenParsers {
                         g
                       }
                     }
-  def global_string = global_id ~ "= private unnamed_addr constant [" ~
-                      wholeNumber ~ "x" ~ ir_type ~ "]" ~ constant_string ~
-                      ", " ~ alignment ^^
+  def global_string = global_id ~ "= private unnamed_addr constant" ~ array_type ~
+                      constant_string ~ ", " ~ alignment ^^
                       {
-                        case name~_~num~"x"~t~"]"~s~_~_ => {
+                        case name~_~t~s~_~_ => {
                           val g = new GlobalVariable()
-                          g.ltype = ArrayType(t, num.toInt)
+                          g.ltype = t.ptr_to  // TODO not sure
                           g.name = Some(name)
-                          g.default_val = new ConstantString(s, num.toInt)
+                          g.default_val = new ConstantString(s, t.size)
                           // add to symbol table
                           global_table(name) = g
                           g
@@ -129,18 +128,23 @@ object Parser extends JavaTokenParsers {
                    }
   def function_attribs = opt("nounwind" | "noalias")
 
-  def ir_type = prim_type ~ rep("*") ^^
+  def ir_type: Parser[Type] = prim_type ~ rep("*") ^^
                 { case p~Nil   => p
                   case p~stars => PointerType(p, stars.size)
                 }
   val int_type = """i(\d+)""".r
-  def prim_type = ("float" | "double" | "void" | int_type | local_id) ^^
+  def prim_type: Parser[Type] = ("float" | "double" | "void" | int_type | array_type | local_id) ^^
                   { case "float"      => FloatType()
                     case "double"     => DoubleType()
                     case "void"       => VoidType()
                     case int_type(bw) => IntegerType(bw.toInt)
-                    case name         => NamedType(name)
+                    case a: ArrayType => a
+                    case name         => NamedType(name.toString)
                   }
+  def array_type: Parser[ArrayType] = "["~>wholeNumber~"x"~ir_type<~"]" ^^
+                   {
+                     case num~"x"~t => ArrayType(t, num.toInt)
+                   }
 
   def bb_header = "; <label>:" ~> wholeNumber ~ "; preds =" ~
                   repsep(label, ",") ^^
@@ -285,9 +289,9 @@ object Parser extends JavaTokenParsers {
                     }
   def phi_case    = "[" ~> value ~ "," ~ label <~ "]" ^^
                     { case v~","~l => (v, l) }
-  def call_inst   = "call" ~> function_attribs ~> ir_type ~ function_name ~ arg_list <~
-                    function_attribs ^^
-                    { case t~n~a => {
+  def call_inst   = "call" ~> function_attribs ~> ir_type ~ opt(function_sig) ~
+                    function_name ~ arg_list <~ function_attribs ^^
+                    { case t~_~n~a => {
                         val c = new CallInst()
                         c.fxn = lookup_fxn(n)
                         // TODO we might have just autovivified the fxn...
@@ -299,8 +303,10 @@ object Parser extends JavaTokenParsers {
                         c
                       }
                     }
+  // mostly shows up for var-arg stuff
+  def function_sig = "(" ~> repsep(ir_type, ",") <~ ", ...)*"
   def arg_list    = "(" ~> repsep(arg, ",") <~ ")"
-  def arg         = ir_type ~ value ^^
+  def arg: Parser[Value] = ir_type ~ (value|gep_inst) ^^
                     { case t~v => {
                         assert_eq(t, v.ltype)
                         v
@@ -330,4 +336,18 @@ object Parser extends JavaTokenParsers {
                    }
                  }
   def add_specs = opt("nuw")~opt("nsw")
+
+  // the ()'s are for when this is embedded in an argument list.. generalize?
+  def gep_inst = "getelementptr"~>opt("inbounds")~>arg_list ^^
+                 {
+                   case ls => {
+                     // TODO i actually think the first is always a pointer. gep
+                     // is hard.
+                     val g = new GEPInst()
+                     g.fields = ls
+                     // TODO this is _probably_ wrong.
+                     g.ltype = ls.head.asInstanceOf[GlobalVariable].default_val.ltype.asInstanceOf[SequentialType].ptr_to_member
+                     g
+                   }
+                 }
 }

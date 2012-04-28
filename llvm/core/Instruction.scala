@@ -118,3 +118,11 @@ class AddInst() extends Instruction() {
   // TODO record the spec too
   def ir_form = "add " + ltype + " " + v1 + ", " + v2
 }
+
+class GEPInst() extends Instruction() {
+  // TODO constructor
+  var fields: List[Value] = Nil
+  // TODO this is so wrong. first is a pointer, rest are ints?
+
+  def ir_form = "getelementptr " + fields.map(_.toString).mkString(",")
+}

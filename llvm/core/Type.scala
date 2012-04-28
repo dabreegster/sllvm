@@ -24,7 +24,10 @@ case class LabelType() extends Type() {
   // for BBs
   override def toString = "label"
 }
-class SequentialType(base: Type) extends Type() {}
+class SequentialType(base: Type) extends Type() {
+  // TODO dubious
+  def ptr_to_member = base.ptr_to
+}
 case class ArrayType(base: Type, size: Int) extends SequentialType(base) {
   override def toString = "array[" + base + " ](" + size + ")"
 }
