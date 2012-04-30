@@ -55,13 +55,7 @@ object Parser extends JavaTokenParsers {
 
   def module = (comment ~> rep(target) ~> rep(type_decl) ~> rep(global_decl |
                 global_string) ~ rep(function)) ^^
-               { case globals~fxns => {
-                   val m = new Module()
-                   m.fxn_table = fxns.map(f => (f.name.get, f)).toMap
-                   m.global_table = globals.map(g => (g.name.get, g)).toMap
-                   m
-                 }
-               }
+               { case globals~fxns => new Module(fxns, globals) }
   def comment = """;.*""".r
   def target  = """target.*""".r
   def llvm_id = ("""[a-zA-Z$._][a-zA-Z$._0-9]*""".r | wholeNumber)

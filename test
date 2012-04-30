@@ -1,6 +1,6 @@
 #!/bin/sh
 
-INPUT=examples/fails3.s
+INPUT=examples/passes4.s
 
 ./build &&
 scala -cp .build llvm.EchoTest $INPUT
