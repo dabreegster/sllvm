@@ -10,6 +10,7 @@ abstract class Instruction() extends User() {
   var parent: BasicBlock = null
 
   def function = parent.parent
+  def module = function.parent
 }
 
 abstract class TerminatorInst() extends Instruction() {
@@ -94,12 +95,17 @@ class PHIInst() extends Instruction() {
   ).mkString(", ")
 }
 
-class CallInst() extends Instruction() {
-  // TODO constructor
-  var fxn: Function = null
-  var args: List[Value] = Nil // TODO Parameter class?
+class CallInst(call: String, ltype_tmp: Type, val args: List[Value]) extends Instruction()
+{
+  ltype = ltype_tmp // TODO soon Value will be fixed
+  lazy val callee: Function = {
+    val f = module.fxn_table(call)
+    assert(ltype == f.ret_type)
+    f
+  }
 
-  def ir_form = "call " + fxn.full_name + "(" + args.map(_.full_name).mkString(", ") + ")"
+  def ir_form = "call " + callee.full_name + "(" +
+                args.map(_.full_name).mkString(", ") + ")"
 }
 
 class BitcastInst() extends Instruction() {

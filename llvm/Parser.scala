@@ -28,8 +28,9 @@ object Parser extends JavaTokenParsers {
   private val global_table = new HashMap[String, GlobalVariable]()
   // for local BBs
   private val bb_table = new HashMap[String, BasicBlock]()
-  // for all functions
-  private val fxn_table = new HashMap[String, Function]()
+
+  // TODO how's this? :P
+  type InstFactory = (Function) => Instruction
 
   def lookup_bb(key: String): BasicBlock = {
     if (bb_table.contains(key)) {
@@ -39,17 +40,6 @@ object Parser extends JavaTokenParsers {
       b.name = Some(key)
       bb_table(key) = b
       return b
-    }
-  }
-
-  def lookup_fxn(key: String): Function = {
-    if (fxn_table.contains(key)) {
-      return fxn_table(key)
-    } else {
-      val f = new Function()
-      f.name = Some(key)
-      fxn_table(key) = f
-      return f
     }
   }
 
@@ -95,17 +85,16 @@ object Parser extends JavaTokenParsers {
   def function = "define" ~> ir_type ~ function_name ~ param_list ~
                  function_attribs ~ "{" ~ rep(bb) <~ "}" ^^
                  { case t~n~p~a~"{"~b => {
-                     val f = new Function()
-                     f.name = Some(n)
-                     f.ret_type = t
-                     f.params = p
-                     p.foreach(_.parent = f)
-                     f.blocks = b
-                     b.foreach(_.parent = f)
+                     val f = (m: Module) => new Function(
+                       parent = m,
+                       name_tmp = Some(n),
+                       ret_type = t,
+                       params = p,
+                       blocks = b
+                     )
                      // Clear the symbol table for the next function's locals
                      symbol_table.clear
                      bb_table.clear
-                     fxn_table(n) = f
                      f
                    }
                  }
@@ -285,18 +274,7 @@ object Parser extends JavaTokenParsers {
                     { case v~","~l => (v, l) }
   def call_inst   = "call" ~> function_attribs ~> ir_type ~ opt(function_sig) ~
                     function_name ~ arg_list <~ function_attribs ^^
-                    { case t~_~n~a => {
-                        val c = new CallInst()
-                        c.fxn = lookup_fxn(n)
-                        // TODO we might have just autovivified the fxn...
-                        if (c.fxn.ret_type != null) {
-                          assert_eq(t, c.fxn.ret_type)
-                        }
-                        c.ltype = t
-                        c.args = a
-                        c
-                      }
-                    }
+                    { case t~_~n~a => new CallInst(n, t, a) }
   // mostly shows up for var-arg stuff
   def function_sig = "(" ~> repsep(ir_type, ",") <~ ", ...)*"
   def arg_list    = "(" ~> repsep(arg, ",") <~ ")"
