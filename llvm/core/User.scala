@@ -1,6 +1,6 @@
 package llvm.core
 
-abstract class User() extends Value() {
+abstract class User(name: Option[String], ltype: Type) extends Value(name, ltype) {
   // TODO better constructor
   private var operands: List[Value] = Nil
 

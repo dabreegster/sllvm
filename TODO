@@ -11,16 +11,14 @@
   - retain more aux info to make parsing/printing IR idempotent
     - alignment, target lines, etc
 
+- Immutable construction
+  - i broke things like args (and the type inference believes my lies!)
+
 - maybe builtins for malloc/scanf
 
 - Prettyprinting LLVM (non IR-dump toString)
 - graphviz
 
 - "Pass" to split BBs at a CallInst
-
-- Immutable construction
-  - Type-safe builder pattern?
-    http://nullary.blogspot.com/2011/10/builder-pattern-revisited-in-scala.html
-  - lazys?
 
 - Build script(s)

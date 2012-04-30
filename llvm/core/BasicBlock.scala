@@ -1,6 +1,6 @@
 package llvm.core
 
-class BasicBlock() extends Value() {
+class BasicBlock(name: Option[String]) extends Value(name, LabelType()) {
   // TODO someday, all constructor params
   var preds: List[BasicBlock] = Nil
   var inst_ls: List[Instruction] = Nil

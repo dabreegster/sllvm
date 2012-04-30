@@ -1,11 +1,6 @@
 package llvm.core
 
-abstract class Value() {
-  // TODO constructor
-  var name: Option[String] = None
-  var ltype: Type = null
-  // TODO make up a name if we don't have one
-
+abstract class Value(val name: Option[String], val ltype: Type) {
   var users: List[User] = Nil
 
   // TODO do we want distinction between printing just name and whole line?
@@ -13,7 +8,7 @@ abstract class Value() {
   // TODO the difference between these 3 is slightly annoying
   def id = "%" + name.get
   def full_name = ltype + " " + id
-  def ir_form(): String
+  def ir_form(): String   // abstract
   override def toString = name match {
     case Some(n) => id + " = " + ir_form
     case None    => ir_form

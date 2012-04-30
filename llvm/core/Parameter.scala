@@ -1,6 +1,6 @@
 package llvm.core
 
-class Parameter() extends Value() {
+class Parameter(name: Option[String], ltype: Type) extends Value(name, ltype) {
   // TODO constructor
   var parent: Function = null
 
