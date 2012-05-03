@@ -14,7 +14,9 @@ abstract class Instruction(name: Option[String], ltype: Type) extends User(name,
   def module = function.parent
 }
 
-abstract class TerminatorInst(ltype: Type) extends Instruction(None, ltype) {
+abstract class TerminatorInst(ltype: Type, name: Option[String] = None
+                             ) extends Instruction(name, ltype)
+{
   // TODO constructor
   var succs: List[BasicBlock] = Nil
 }
@@ -95,7 +97,7 @@ class PHIInst(name: Option[String], ltype: Type,
 
 class CallInst(name: Option[String], call: String, ltype: Type,
                val args: List[Value]
-              ) extends Instruction(name, ltype)
+              ) extends TerminatorInst(ltype, name)
 {
   lazy val callee: Function = {
     val f = module.fxn_table(call)

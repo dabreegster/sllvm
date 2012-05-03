@@ -13,6 +13,7 @@
 
 - Immutable construction
   - i broke things like args (and the type inference believes my lies!)
+  - things like BB succs aren't set... go through and make sure all these're fine
 
 - maybe builtins for malloc/scanf
 

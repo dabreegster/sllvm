@@ -1,6 +1,8 @@
 #!/bin/sh
 
 INPUT=examples/passes4.s
+#RUN=llvm.EchoTest
+RUN=llvm.SplitAtCall
 
 ./build &&
-scala -cp .build llvm.EchoTest $INPUT
+scala -cp .build $RUN $INPUT

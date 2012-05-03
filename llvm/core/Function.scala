@@ -1,13 +1,20 @@
 package llvm.core
 
 class Function(name: Option[String], val ret_type: Type,
-               val params: List[Parameter], val blocks: List[BasicBlock],
-               val parent: Module
+               val params: List[Parameter], val parent: Module
               ) extends Value(name, ret_type) // TODO FunctionType(...)?
 {
+  var blocks: List[BasicBlock] = Nil
+
   // TODO
   params.foreach(p => p.parent = this)
-  blocks.foreach(b => b.parent = this)
+
+  // builder pattern
+  def setup_blocks(ls: List[BasicBlock]): Function = {
+    blocks = ls
+    blocks.foreach(b => b.parent = this)
+    return this
+  }
 
   var var_arg: Boolean = false
 

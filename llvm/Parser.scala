@@ -87,9 +87,8 @@ object Parser extends JavaTokenParsers {
                        parent = m,
                        name = Some(n),
                        ret_type = t,
-                       params = p,
-                       blocks = b
-                     )
+                       params = p
+                     ).setup_blocks(b)
                      // Clear the symbol table for the next function's locals
                      symbol_table.clear
                      bb_table.clear
