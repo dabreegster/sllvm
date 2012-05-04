@@ -103,13 +103,13 @@ object Parser extends JavaTokenParsers {
                    }
   def function_attribs = opt("nounwind" | "noalias")
 
-  def ir_type: Parser[Type] = prim_type ~ rep("*") ^^
+  def ir_type = prim_type ~ rep("*") ^^
                 { case p~Nil   => p
                   case p~stars => PointerType(p, stars.size)
                 }
   val int_type = """i(\d+)""".r
-  def prim_type: Parser[Type] = ("float" | "double" | "void" | int_type | array_type |
-                                 local_id) ^^
+  def prim_type = ("float" | "double" | "void" | int_type | array_type |
+                   local_id) ^^
                   { case "float"      => FloatType()
                     case "double"     => DoubleType()
                     case "void"       => VoidType()
@@ -134,8 +134,7 @@ object Parser extends JavaTokenParsers {
              case _ => throw new Exception("Impossible match parsing bb")
            }
 
-  def term_inst: Parser[TerminatorInst] = (void_ret_inst | ret_inst |
-                                           uncond_br_inst | br_inst)
+  def term_inst = (void_ret_inst | ret_inst | uncond_br_inst | br_inst)
   // note: splitting up disjunctions explicitly somehow helps type inference
   def void_ret_inst = "ret void" ^^ { case _ => new VoidReturnInst() }
   def ret_inst = "ret"~ir_type~value ^^ { case "ret"~t~v => new ReturnInst(v, t) }
@@ -193,14 +192,14 @@ object Parser extends JavaTokenParsers {
   // mostly shows up for var-arg stuff
   def function_sig = "(" ~> repsep(ir_type, ",") <~ ", ...)*"
   def arg_list    = "(" ~> repsep(arg, ",") <~ ")"
-  def arg: Parser[Value] = ir_type ~ (value|gep_inst) ^^
-                    { case t~raw_v => {
-                        // TODO lost type info?
-                        val v = raw_v.asInstanceOf[Value]
-                        assert_eq(t, v.ltype)
-                        v
-                      }
-                    }
+  // probably 'arg' is going to wind up 'constant value' or something
+  def arg: Parser[Value] = arg1 | arg2
+  def arg1 = ir_type~value ^^ { case t~v => assert_eq(t, v.ltype); v }
+  def arg2 = ir_type~gep_inst ^^ { case t~factory => {
+               val g = factory(None)  // nameless
+               assert_eq(t, g.ltype)
+               g
+             } }
   
   def bitcast_inst = "bitcast"~>ir_type~value~"to"~ir_type ^^
                      { case t1~v~"to"~t2 =>
