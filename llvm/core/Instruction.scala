@@ -21,7 +21,8 @@ abstract class TerminatorInst(ltype: Type, name: Option[String] = None
   var succs: List[BasicBlock] = Nil
 }
 
-class ReturnInst(ret_val: Value) extends TerminatorInst(ret_val.ltype) {
+class ReturnInst(ret_val: Value, ret_type: Type) extends TerminatorInst(ret_val.ltype) {
+  assert(ltype == ret_type)
   // TODO type should involve the ret_val type, right?
 
   def ir_form = "ret " + ret_val.full_name

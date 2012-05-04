@@ -11,6 +11,8 @@ import java.io.FileReader
 
 // TODO do the assertions in the actual values, not parsing
 
+// TODO why does the type get erased when involved with disjunctions?
+
 object Parser extends JavaTokenParsers {
   // TODO util class.
   def assert_eq(a: Any, b: Any) = assert(a == b, a + " != " + b)
@@ -31,7 +33,7 @@ object Parser extends JavaTokenParsers {
   private val bb_table = new HashMap[String, BasicBlock]()
 
   // TODO how's this? :P
-  type InstFactory = (Function) => Instruction
+  //type InstFactory = (Function) => Instruction
   // TODO actually, save on typing and get rid of the 'name => inst' bit?
 
   def lookup_bb(key: String): BasicBlock = {
@@ -129,22 +131,10 @@ object Parser extends JavaTokenParsers {
                   { case lbl~junk~preds => lbl :: preds }
   def bb = opt(bb_header) ~ rep(named_inst) ~ term_inst ^^
            {
-             case Some(lbl :: preds)~i~t => {
-               val b = lookup_bb(lbl)
-               b.preds = preds.map(lookup_bb)
-               b.inst_ls = i
-               b.term_inst = t
-               (t :: i).foreach(_.parent = b)
-               b
-             }
-             case None~i~t => {
-               val b = lookup_bb("0")
-               b.preds = Nil
-               b.inst_ls = i
-               b.term_inst = t
-               (t :: i).foreach(_.parent = b)
-               b
-             }
+             case Some(lbl :: preds)~i~t => (lookup_bb(lbl)).setup(
+               i, t, preds.map(lookup_bb)
+             )
+             case None~i~t => (lookup_bb("0")).setup(i, t, Nil)
              case _ => throw new Exception("Impossible match parsing bb")
            }
 
@@ -156,25 +146,16 @@ object Parser extends JavaTokenParsers {
                 | ("br" ~ ir_type ~ value ~ ", label" ~ label ~ ", label" ~ label)) ^^
                 {
                   case "ret void" => new VoidReturnInst()
-                  case "ret"~t~raw_v => {
-                    val v = cast_value(raw_v)
-                    // check well-formedness
-                    assert_eq(t, v.ltype)
-                    new ReturnInst(v)
-                  }
+                  case "ret"~t~raw_v => new ReturnInst(
+                    raw_v.asInstanceOf[Value], t.asInstanceOf[Type]
+                  )
                   case "br label"~to => new UnconditionalBranchInst(lookup_bb(to.toString))
                   case "br"~t~raw_v~_~t1~_~t2 => new BranchInst(
                     // TODO lost type info?
-                    t.asInstanceOf[Type], cast_value(raw_v), lookup_bb(t1.toString),
-                    lookup_bb(t2.toString)
+                    t.asInstanceOf[Type], raw_v.asInstanceOf[Value],
+                    lookup_bb(t1.toString), lookup_bb(t2.toString)
                   )
                 }
-
-  // TODO why does the type get erased when involved with disjunctions?
-  def cast_value(x: Any): Value = x match {
-    case v: Value => v
-    case _        => throw new Exception("or " + x.getClass)
-  }
 
   // TODO if we split it up, can we avoid the type loss?
   def named_inst = ((local_id ~ "=" ~ inst) | inst) ^^
