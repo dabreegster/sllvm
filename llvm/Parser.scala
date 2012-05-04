@@ -9,15 +9,10 @@ import java.io.FileReader
 
 // TODO make sure all the stuff we lazily created gets filled out eventually
 
-// TODO do the assertions in the actual values, not parsing
-
-// TODO why does the type get erased when involved with disjunctions?
-
 object Parser extends JavaTokenParsers {
   // TODO util class.
   def assert_eq(a: Any, b: Any) = assert(a == b, a + " != " + b)
 
-  // TODO can't use <~ and ~> to get rid of every junk token, unfortunately
   // TODO other things from http://llvm.org/docs/LangRef.html
 
   def parse(fn: String): Module = parseAll(module, new FileReader(fn)) match {
@@ -113,7 +108,8 @@ object Parser extends JavaTokenParsers {
                   case p~stars => PointerType(p, stars.size)
                 }
   val int_type = """i(\d+)""".r
-  def prim_type: Parser[Type] = ("float" | "double" | "void" | int_type | array_type | local_id) ^^
+  def prim_type: Parser[Type] = ("float" | "double" | "void" | int_type | array_type |
+                                 local_id) ^^
                   { case "float"      => FloatType()
                     case "double"     => DoubleType()
                     case "void"       => VoidType()
@@ -129,7 +125,7 @@ object Parser extends JavaTokenParsers {
   def bb_header = "; <label>:" ~> wholeNumber ~ "; preds =" ~
                   repsep(label, ",") ^^
                   { case lbl~junk~preds => lbl :: preds }
-  def bb = opt(bb_header) ~ rep(named_inst) ~ term_inst ^^
+  def bb = opt(bb_header) ~ rep(named_inst|unnamed_inst) ~ term_inst ^^
            {
              case Some(lbl :: preds)~i~t => (lookup_bb(lbl)).setup(
                i, t, preds.map(lookup_bb)
@@ -138,40 +134,30 @@ object Parser extends JavaTokenParsers {
              case _ => throw new Exception("Impossible match parsing bb")
            }
 
-  // (the right type isn't inferred)
-  def term_inst: Parser[TerminatorInst] = (
-                  ("ret" ~ ir_type ~ value)
-                | ("ret void")
-                | ("br label" ~ label)
-                | ("br" ~ ir_type ~ value ~ ", label" ~ label ~ ", label" ~ label)) ^^
+  def term_inst: Parser[TerminatorInst] = (void_ret_inst | ret_inst |
+                                           uncond_br_inst | br_inst)
+  // note: splitting up disjunctions explicitly somehow helps type inference
+  def void_ret_inst = "ret void" ^^ { case _ => new VoidReturnInst() }
+  def ret_inst = "ret"~ir_type~value ^^ { case "ret"~t~v => new ReturnInst(v, t) }
+  def uncond_br_inst = "br label"~label ^^
+                       { case _~to => new UnconditionalBranchInst(lookup_bb(to)) }
+  def br_inst = "br" ~ ir_type ~ value ~ ", label" ~ label ~ ", label" ~ label ^^
                 {
-                  case "ret void" => new VoidReturnInst()
-                  case "ret"~t~raw_v => new ReturnInst(
-                    raw_v.asInstanceOf[Value], t.asInstanceOf[Type]
-                  )
-                  case "br label"~to => new UnconditionalBranchInst(lookup_bb(to.toString))
-                  case "br"~t~raw_v~_~t1~_~t2 => new BranchInst(
-                    // TODO lost type info?
-                    t.asInstanceOf[Type], raw_v.asInstanceOf[Value],
-                    lookup_bb(t1.toString), lookup_bb(t2.toString)
+                  case "br"~t~v~_~t1~_~t2 => new BranchInst(
+                    t, v, lookup_bb(t1), lookup_bb(t2)
                   )
                 }
 
-  // TODO if we split it up, can we avoid the type loss?
-  def named_inst = ((local_id ~ "=" ~ inst) | inst) ^^
+  def named_inst = local_id ~ "=" ~ inst ^^
                  {
-                  // TODO using disjunctions in parsing loses types?
-                   case name~"="~raw_i => {
-                     val i = raw_i.asInstanceOf[(Option[String]) => Instruction].apply(
-                       Some(name.toString)
-                     )
-                     symbol_table(name.toString) = i
+                   case name~"="~factory => {
+                     val i = factory(Some(name))
+                     symbol_table(name) = i
                      i
                    }
-                   case raw_i => raw_i.asInstanceOf[(Option[String]) => Instruction].apply(
-                     None
-                   )
                  }
+  def unnamed_inst = inst ^^ { case i => i(None) }
+
   def inst = (alloca_inst | store_inst | load_inst | icmp_inst | phi_inst |
               call_inst | bitcast_inst | add_inst)
   def local_id = "%" ~> llvm_id
