@@ -1,6 +1,6 @@
 #!/bin/sh
 
-INPUT=examples/passes10.s
+INPUT=examples/passes6.s
 RUN=llvm.EchoTest
 #RUN=llvm.SplitAtCall
 

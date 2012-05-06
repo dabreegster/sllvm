@@ -18,6 +18,8 @@ class Function(name: Option[String], val ret_type: Type,
 
   var var_arg: Boolean = false
 
+  def is_declaration = blocks.isEmpty
+
   // TODO user means somebody calls it
   // TODO iterate through flat list of instructions
   override def id = "@" + name.get

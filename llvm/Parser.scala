@@ -1,6 +1,7 @@
 package llvm
 
 import llvm.core._
+import llvm.Util._
 import scala.collection.mutable.HashMap
 import scala.util.parsing.combinator._
 import java.io.FileReader
@@ -10,8 +11,7 @@ import java.io.FileReader
 // TODO make sure all the stuff we lazily created gets filled out eventually
 
 object Parser extends JavaTokenParsers {
-  // TODO util class.
-  def assert_eq(a: Any, b: Any) = assert(a == b, a + " != " + b)
+  // TODO make an implicit def for the named instruction pattern
 
   // TODO other things from http://llvm.org/docs/LangRef.html
 
@@ -26,6 +26,8 @@ object Parser extends JavaTokenParsers {
   private val global_table = new HashMap[String, GlobalVariable]()
   // for local BBs
   private val bb_table = new HashMap[String, BasicBlock]()
+  // for named types
+  private val type_table = new HashMap[String, Later[Type]]()
 
   // TODO how's this? :P
   //type InstFactory = (Function) => Instruction
@@ -41,12 +43,20 @@ object Parser extends JavaTokenParsers {
     }
   }
 
-  def module = (comment ~> rep(target) ~> rep(type_decl) ~> rep(global_decl |
-                global_string) ~ rep(function)) ^^
-               { case globals~fxns => new Module(fxns, globals) }
+  def module = comment ~> rep(target) ~> rep(type_decl) ~> rep(global_decl |
+                global_string) ~ rep(function) ~ rep(fxn_declares) ^^
+               { case globals~fxns~declares => new Module(fxns ++ declares, globals) }
   def comment = """;.*""".r
   def target  = """target.*""".r
   def llvm_id = ("""[a-zA-Z$._][a-zA-Z$._0-9]*""".r | wholeNumber)
+  // TODO this throws away params
+  def fxn_declares = "declare"~>ir_type~function_name~function_sig ^^
+                     { case t~n~_ => (m: Module) => new Function(
+                         parent = m,
+                         name = Some(n),
+                         ret_type = t,
+                         params = Nil
+                       ) }
 
   def global_decl = global_id ~ "= global" ~ ir_type ~ constant ~ "," ~ alignment ^^
                     { case n~_~t~c~","~a => {
@@ -62,7 +72,7 @@ object Parser extends JavaTokenParsers {
                           // TODO not sure of type
                           // TODO giving it the name twice?
                           val g = new GlobalVariable(
-                            Some(n), t.ptr_to, new ConstantString(s, t.size, Some(n))
+                            Some(n), t.ptr_to, ConstantString(s, t.size, Some(n))
                           )
                           // add to symbol table
                           global_table(n) = g
@@ -74,8 +84,12 @@ object Parser extends JavaTokenParsers {
   def global_id = "@" ~> llvm_id
   def global_id_lookup = global_id ^^ { case id => global_table(id) }
 
-  def type_decl = local_id ~ "= type {" ~ repsep(ir_type, ",") <~ "}"
-  // TODO process above.
+  def type_decl = local_id ~ "=" ~ lazy_ir_type ^^
+                  { case n~"="~t => {
+                      type_table(n) = t
+                      t
+                    }
+                  }
 
   def function = "define" ~> ir_type ~ function_name ~ param_list ~
                  function_attribs ~ "{" ~ rep(bb) <~ "}" ^^
@@ -103,24 +117,26 @@ object Parser extends JavaTokenParsers {
                    }
   def function_attribs = opt("nounwind" | "noalias")
 
-  def ir_type = prim_type ~ rep("*") ^^
+  def ir_type = lazy_ir_type ^^ { case l => l() }  // evaluate now
+  def lazy_ir_type: Parser[Later[Type]] = prim_type ~ rep("*") ^^
                 { case p~Nil   => p
                   case p~stars => PointerType(p, stars.size)
                 }
   val int_type = """i(\d+)""".r
-  def prim_type = ("float" | "double" | "void" | int_type | array_type |
-                   local_id) ^^
-                  { case "float"      => FloatType()
-                    case "double"     => DoubleType()
-                    case "void"       => VoidType()
-                    case int_type(bw) => IntegerType(bw.toInt)
-                    case a: ArrayType => a
-                    case name         => NamedType(name.toString)
+  def prim_type: Parser[Later[Type]] = ("float" | "double" | "void" | int_type |
+                                        array_type | struct_type | local_id) ^^
+                  { case "float"       => FloatType()
+                    case "double"      => DoubleType()
+                    case "void"        => VoidType()
+                    case int_type(bw)  => IntegerType(bw.toInt)
+                    case a: ArrayType  => a
+                    case s: StructType => s
+                    case name          => later { type_table(name.toString) }
                   }
   def array_type: Parser[ArrayType] = "["~>wholeNumber~"x"~ir_type<~"]" ^^
-                   {
-                     case num~"x"~t => ArrayType(t, num.toInt)
-                   }
+                   { case num~"x"~t => ArrayType(t, num.toInt) }
+  def struct_type: Parser[StructType] = "type {" ~> repsep(lazy_ir_type, ",") <~ "}" ^^
+                                        { case ls => StructType(ls) }
 
   def bb_header = "; <label>:" ~> wholeNumber ~ "; preds =" ~
                   repsep(label, ",") ^^
@@ -134,15 +150,15 @@ object Parser extends JavaTokenParsers {
              case _ => throw new Exception("Impossible match parsing bb")
            }
 
-  def term_inst = (void_ret_inst | ret_inst | uncond_br_inst | br_inst)
+  def term_inst = void_ret_inst | ret_inst | uncond_br_inst | br_inst
   // note: splitting up disjunctions explicitly somehow helps type inference
   def void_ret_inst = "ret void" ^^ { case _ => new VoidReturnInst() }
-  def ret_inst = "ret"~ir_type~value ^^ { case "ret"~t~v => new ReturnInst(v, t) }
-  def uncond_br_inst = "br label"~label ^^
-                       { case _~to => new UnconditionalBranchInst(lookup_bb(to)) }
-  def br_inst = "br" ~ ir_type ~ value ~ ", label" ~ label ~ ", label" ~ label ^^
+  def ret_inst = "ret"~>typed_value ^^ { case t~v => new ReturnInst(v, t) }
+  def uncond_br_inst = "br label"~>label ^^
+                       { case to => new UnconditionalBranchInst(lookup_bb(to)) }
+  def br_inst = "br" ~> typed_value ~ ", label" ~ label ~ ", label" ~ label ^^
                 {
-                  case "br"~t~v~_~t1~_~t2 => new BranchInst(
+                  case t~v~_~t1~_~t2 => new BranchInst(
                     t, v, lookup_bb(t1), lookup_bb(t2)
                   )
                 }
@@ -157,27 +173,35 @@ object Parser extends JavaTokenParsers {
                  }
   def unnamed_inst = inst ^^ { case i => i(None) }
 
-  def inst = (alloca_inst | store_inst | load_inst | icmp_inst | phi_inst |
-              call_inst | bitcast_inst | add_inst)
+  def inst = alloca_inst | store_inst | load_inst | icmp_inst | phi_inst |
+             call_inst | bitcast_inst | add_inst | gep_inst | sext_inst
   def local_id = "%" ~> llvm_id
   def local_id_lookup = local_id ^^ { case id => symbol_table(id) }
   def label = "%" ~> wholeNumber  // for BBs
   def constant = constant_int
-  def constant_int = wholeNumber ^^ { case n => new ConstantInt(n.toInt) }
+  def constant_int = wholeNumber ^^ { case n => ConstantInt(n.toInt, 32) }
   def value = local_id_lookup | global_id_lookup | constant
+  def typed_value = ir_type ~ value ^^ { case t~v => recast(t, v) }
+  // sometimes we get more info about a value...
+  def recast(t: Type, v: Value): ~[Type, Value] = (v, t) match {
+    case (ConstantInt(n, _), IntegerType(bw)) => new ~[Type, Value](t, ConstantInt(n, bw))
+    case (v, t) => new ~[Type, Value](t, v)
+    // TODO assert types eq in second case?
+  }
 
   def alloca_inst = "alloca" ~> ir_type ~ "," ~ alignment ^^
                     { case t~","~a => (n: Option[String]) => new AllocaInst(n, t.ptr_to) }
   def alignment   = "align" ~ wholeNumber
-  def store_inst  = "store" ~> ir_type ~ value ~ "," ~ ir_type ~ value <~
+  def store_inst  = "store" ~> typed_value ~ "," ~ ir_type ~ value <~
                     opt("," ~ alignment) ^^
                     { case st~sv~","~dt~dv =>
                         (n: Option[String]) => new StoreInst(n, sv, st, dv, dt)
                     }
-  def load_inst   = "load" ~> ir_type ~ value <~ opt("," ~ alignment) ^^
+  def load_inst   = "load" ~> typed_value <~ opt("," ~ alignment) ^^
                     { case t~sv => (n: Option[String]) => new LoadInst(n, sv, t) }
   def icmp_inst   = "icmp" ~> icmp_op ~ ir_type ~ value ~ "," ~ value ^^
                     { case op~t~v1~","~v2 =>
+                      // TODO use typed_value and recast v2.
                       (n: Option[String]) => new IcmpInst(n, op, t, v1, v2)
                     }
   def icmp_op     = ("eq" | "ne" | "ugt" | "uge" | "ult" | "ule" |
@@ -190,11 +214,12 @@ object Parser extends JavaTokenParsers {
                     function_name ~ arg_list <~ function_attribs ^^
                     { case t~_~c~a => (n: Option[String]) => new CallInst(n, c, t, a) }
   // mostly shows up for var-arg stuff
-  def function_sig = "(" ~> repsep(ir_type, ",") <~ ", ...)*"
-  def arg_list    = "(" ~> repsep(arg, ",") <~ ")"
+  def function_sig = "(" ~> repsep(ir_type, ",") <~ ", ...)"<~opt("*")
+  def bare_arg_list = repsep(arg, ",")
+  def arg_list    = "(" ~> bare_arg_list <~ ")"
   // probably 'arg' is going to wind up 'constant value' or something
   def arg: Parser[Value] = arg1 | arg2
-  def arg1 = ir_type~value ^^ { case t~v => assert_eq(t, v.ltype); v }
+  def arg1 = typed_value ^^ { case t~v => assert_eq(t, v.ltype); v }
   def arg2 = ir_type~gep_inst ^^ { case t~factory => {
                val g = factory(None)  // nameless
                assert_eq(t, g.ltype)
@@ -213,6 +238,8 @@ object Parser extends JavaTokenParsers {
   def add_specs = opt("nuw")~opt("nsw")
 
   // the ()'s are for when this is embedded in an argument list.. generalize?
-  def gep_inst = "getelementptr"~>opt("inbounds")~>arg_list ^^
+  def gep_inst = "getelementptr"~>opt("inbounds")~>(arg_list|bare_arg_list) ^^
                  { case ls => (n: Option[String]) => new GEPInst(n, ls) }
+  def sext_inst = "sext"~>typed_value~"to"~ir_type ^^
+                  { case t1~v~"to"~t2 => (n: Option[String]) => new SextInst(n, t1, v, t2) }
 }

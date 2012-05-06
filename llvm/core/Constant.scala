@@ -1,9 +1,10 @@
 package llvm.core
 
+import llvm.Util._
+
 abstract class Constant(name: Option[String], ltype: Type) extends Value(name, ltype) {}
 
-class ConstantInt(val n: Int) extends Constant(None, IntegerType(32)) {
-  // TODO what bitwidth?
+case class ConstantInt(val n: Int, bw: Int) extends Constant(None, IntegerType(bw)) {
   // TODO ever have a name?
   // TODO some kind of AP int knockoff?
 
@@ -12,7 +13,7 @@ class ConstantInt(val n: Int) extends Constant(None, IntegerType(32)) {
   override def full_name = ltype + " " + n
 }
 
-class ConstantFP(val n: Double) extends Constant(None, DoubleType()) {
+case class ConstantFP(val n: Double) extends Constant(None, DoubleType()) {
   // TODO or FloatType?
   // TODO ever have a name?
 
@@ -21,8 +22,8 @@ class ConstantFP(val n: Double) extends Constant(None, DoubleType()) {
   override def full_name = ltype + " " + n
 }
 
-class ConstantString(s: String, size: Int, name: Option[String]) extends Constant(
-  name, ArrayType(IntegerType(8), size)
+case class ConstantString(s: String, size: Int, opt_name: Option[String]) extends Constant(
+  opt_name, ArrayType(IntegerType(8), size)
 ) {
   // TODO this should really be a case of ConstantArray
 

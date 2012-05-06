@@ -3,23 +3,18 @@
 ########
 
 - LLVM support (http://llvm.org/docs/LangRef.html)
-  - declarations...
-  - named types...
   - semantics of var-args
   - fill out User operands
-  - gep is hard
   - retain more aux info to make parsing/printing IR idempotent
     - alignment, target lines, etc
 
 - Immutable construction
-  - i broke things like args (and the type inference believes my lies!)
   - things like BB succs aren't set... go through and make sure all these're fine
+  - anywhere with factories, override equals()
 
 - maybe builtins for malloc/scanf
 
 - Prettyprinting LLVM (non IR-dump toString)
 - graphviz
-
-- "Pass" to split BBs at a CallInst
 
 - Build script(s)

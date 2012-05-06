@@ -33,3 +33,9 @@ framework.
 * Parse/re-emit IR
 * Interactive graphviz visualization of IR
 * Accumulate convenience methods for core constructs
+
+Design
+======
+
+In the future, some of the tricks (lazy evaluation, implicit conversions) used
+to cleanly handle certain difficult aspects of parsing IR will be described.
