@@ -2,19 +2,16 @@
 # TODO #
 ########
 
-- LLVM support (http://llvm.org/docs/LangRef.html)
-  - semantics of var-args
-  - fill out User operands
-  - retain more aux info to make parsing/printing IR idempotent
-    - alignment, target lines, etc
+- make output of parsed sllvm be identical to input
+  - var-args
+  - run through tests for the rest
 
-- Immutable construction
+- Immutable construction (aka really clean code)
+  - fill out User operands
   - things like BB succs aren't set... go through and make sure all these're fine
   - anywhere with factories, override equals()
 
-- maybe builtins for malloc/scanf
-
-- Prettyprinting LLVM (non IR-dump toString)
-- graphviz
+- graphviz output
 
 - Build script(s)
+- Bigger tests

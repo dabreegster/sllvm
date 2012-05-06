@@ -49,6 +49,6 @@ class BasicBlock(name: Option[String]) extends Value(name, LabelType()) {
   def ir_header = if (is_entry)
                     ""
                   else
-                    "\n; <label>:" + name.get + "\t\t\t; preds = " +
-                    preds.map(_.id).mkString(", ") + "\n"
+                    "\n%-50s%s\n".format("; <label>:" + name.get, "; preds = " +
+                    preds.map(_.id).mkString(", "))
 }

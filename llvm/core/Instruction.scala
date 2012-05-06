@@ -6,6 +6,10 @@ import llvm.Util._
 // TODO apply and unapply could almost parse/unparse...
   // *** extractors.
 
+// note: the junk String that some instructions take is for extra alignment info
+// we don't care to encode that in sllvm, but when we re-print the IR, it's nice
+// to make the diffs smaller
+
 abstract class Instruction(name: Option[String], ltype: Type) extends User(name, ltype)
 {
   // TODO constructor
@@ -50,29 +54,31 @@ class BranchInst(ltype: Type, val test_val: Value, val true_target: BasicBlock,
   )
 }
 
-class AllocaInst(name: Option[String], ltype: Type) extends Instruction(name, ltype)
+class AllocaInst(name: Option[String], ltype: Type, junk: String = "")
+      extends Instruction(name, ltype)
 {
   // ltype is a pointer to whatever was allocated
 
   def alloced_type = ltype.deref
-  def ir_form = "alloca " + alloced_type   // TODO alignment
+  def ir_form = "alloca " + alloced_type + junk
 }
 
 class StoreInst(name: Option[String], val src: Value, src_type: Type,
-                val dst: Value, dst_type: Type) extends Instruction(name, VoidType())
+                val dst: Value, dst_type: Type, junk: String = "")
+      extends Instruction(name, VoidType())
 {
   assert_eq(src.ltype, src_type)
   assert_eq(dst.ltype, dst_type)
 
-  def ir_form = "store %s, %s".format(src.full_name, dst.full_name)  // TODO alignment
+  def ir_form = "store %s, %s".format(src.full_name, dst.full_name) + junk
 }
 
-class LoadInst(name: Option[String], val src: Value, src_type: Type)
+class LoadInst(name: Option[String], val src: Value, src_type: Type, junk: String = "")
       extends Instruction(name, src_type.deref)
 {
   assert_eq(src.ltype, src_type)
 
-  def ir_form = "load " + src.full_name // TODO alignment
+  def ir_form = "load " + src.full_name + junk
 }
 
 class IcmpInst(name: Option[String], val op: String, cmp_type: Type,
@@ -92,7 +98,7 @@ class PHIInst(name: Option[String], ltype: Type,
 {
   cases.foreach(c => assert_eq(c._1.ltype, ltype))
 
-  def ir_form = "phi " + ltype + cases.map(
+  def ir_form = "phi " + ltype + " " + cases.map(
     c => "[ %s, %s ]".format(c._1.id, c._2.id)
   ).mkString(", ")
 }

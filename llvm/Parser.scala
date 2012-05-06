@@ -43,9 +43,12 @@ object Parser extends JavaTokenParsers {
     }
   }
 
-  def module = comment ~> rep(target) ~> rep(type_decl) ~> rep(global_decl |
+  def module = comment ~ rep(target) ~ rep(type_decl) ~ rep(global_decl |
                 global_string) ~ rep(function) ~ rep(fxn_declares) ^^
-               { case globals~fxns~declares => new Module(fxns ++ declares, globals) }
+               { case j1~j2~_~globals~fxns~declares => new Module(
+                   fxns ++ declares, globals, j1 :: j2
+                 )
+               }
   def comment = """;.*""".r
   def target  = """target.*""".r
   def llvm_id = ("""[a-zA-Z$._][a-zA-Z$._0-9]*""".r | wholeNumber)
@@ -58,17 +61,17 @@ object Parser extends JavaTokenParsers {
                          params = Nil
                        ) }
 
-  def global_decl = global_id ~ "= global" ~ ir_type ~ constant ~ "," ~ alignment ^^
-                    { case n~_~t~c~","~a => {
-                        val g = new GlobalVariable(Some(n), t.ptr_to, c)
+  def global_decl = global_id ~ "= global" ~ ir_type ~ constant ~ alignment ^^
+                    { case n~_~t~c~a => {
+                        val g = new GlobalVariable(Some(n), t.ptr_to, c, a)
                         global_table(n) = g
                         g
                       }
                     }
   def global_string = global_id ~ "= private unnamed_addr constant" ~ array_type ~
-                      constant_string ~ ", " ~ alignment ^^
+                      constant_string ~ alignment ^^
                       {
-                        case n~_~t~s~_~_ => {
+                        case n~_~t~s~_ => {
                           // TODO not sure of type
                           // TODO giving it the name twice?
                           val g = new GlobalVariable(
@@ -98,7 +101,8 @@ object Parser extends JavaTokenParsers {
                        parent = m,
                        name = Some(n),
                        ret_type = t,
-                       params = p
+                       params = p,
+                       junk = a
                      ).setup_blocks(b)
                      // Clear the symbol table for the next function's locals
                      symbol_table.clear
@@ -115,7 +119,10 @@ object Parser extends JavaTokenParsers {
                        p
                      }
                    }
-  def function_attribs = opt("nounwind" | "noalias")
+  def function_attribs = opt("nounwind" | "noalias") ^^ {
+                           case Some(a) => " " + a
+                           case None    => ""
+                         }
 
   def ir_type = lazy_ir_type ^^ { case l => l() }  // evaluate now
   def lazy_ir_type: Parser[Later[Type]] = prim_type ~ rep("*") ^^
@@ -189,16 +196,20 @@ object Parser extends JavaTokenParsers {
     // TODO assert types eq in second case?
   }
 
-  def alloca_inst = "alloca" ~> ir_type ~ "," ~ alignment ^^
-                    { case t~","~a => (n: Option[String]) => new AllocaInst(n, t.ptr_to) }
-  def alignment   = "align" ~ wholeNumber
-  def store_inst  = "store" ~> typed_value ~ "," ~ ir_type ~ value <~
-                    opt("," ~ alignment) ^^
-                    { case st~sv~","~dt~dv =>
-                        (n: Option[String]) => new StoreInst(n, sv, st, dv, dt)
+  def alloca_inst = "alloca" ~> ir_type ~ alignment ^^
+                    { case t~junk => (n: Option[String]) => new AllocaInst(n, t.ptr_to, junk)
                     }
-  def load_inst   = "load" ~> typed_value <~ opt("," ~ alignment) ^^
-                    { case t~sv => (n: Option[String]) => new LoadInst(n, sv, t) }
+  def alignment   = opt(", align" ~ wholeNumber) ^^ {
+                      case Some(text~n) => text + " " + n
+                      case None         => ""
+                    }
+  def store_inst  = "store" ~> typed_value ~ "," ~ ir_type ~ value ~ alignment ^^
+                    { case st~sv~","~dt~dv~junk =>
+                        (n: Option[String]) => new StoreInst(n, sv, st, dv, dt, junk)
+                    }
+  def load_inst   = "load" ~> typed_value ~ alignment ^^
+                    { case t~sv~junk => (n: Option[String]) => new LoadInst(n, sv, t, junk)
+                    }
   def icmp_inst   = "icmp" ~> icmp_op ~ ir_type ~ value ~ "," ~ value ^^
                     { case op~t~v1~","~v2 =>
                       // TODO use typed_value and recast v2.

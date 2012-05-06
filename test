@@ -6,3 +6,5 @@ RUN=llvm.EchoTest
 
 ./build &&
 scala -cp .build $RUN $INPUT
+#scala -cp .build $RUN $INPUT > out
+#meld $INPUT out
