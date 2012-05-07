@@ -1,6 +1,6 @@
 #!/bin/sh
 
-INPUT=examples/passes6.s
+INPUT=examples/bzip.s
 RUN=llvm.EchoTest
 #RUN=llvm.SplitAtCall
 #RUN=llvm.VizTest

@@ -39,3 +39,9 @@ Design
 
 In the future, some of the tricks (lazy evaluation, implicit conversions) used
 to cleanly handle certain difficult aspects of parsing IR will be described.
+
+Notes
+=====
+
+- Great tests can be generated with clang using
+  http://people.csail.mit.edu/smcc/projects/single-file-programs/

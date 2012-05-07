@@ -43,8 +43,8 @@ object Parser extends JavaTokenParsers {
     }
   }
 
-  def module = comment ~ rep(target) ~ rep(type_decl) ~ rep(global_decl |
-                global_string) ~ rep(function) ~ rep(fxn_declares) ^^
+  def module = comment ~ rep(target) ~ rep(type_decl) ~ rep(global_string | global_decl) ~
+               rep(function) ~ rep(fxn_declares) ^^
                { case j1~j2~_~globals~fxns~declares => new Module(
                    fxns ++ declares, globals, j1 :: j2
                  )
@@ -61,13 +61,22 @@ object Parser extends JavaTokenParsers {
                          params = Nil
                        ) }
 
-  def global_decl = global_id ~ "= global" ~ ir_type ~ constant ~ alignment ^^
-                    { case n~_~t~c~a => {
+  def linkage = opt("external" | "internal")
+  def global_decl = global_id ~ "=" ~ linkage ~ "global" ~ ir_type ~
+                    opt(constant ~ alignment) ^^
+                    { case n~"="~_~"global"~t~Some(c~a) => {
                         val g = new GlobalVariable(Some(n), t.ptr_to, c, a)
                         global_table(n) = g
                         g
                       }
+                      case n~"="~_~"global"~t~None => {
+                        // TODO no default val...
+                        val g = new GlobalVariable(Some(n), t.ptr_to, null)
+                        global_table(n) = g
+                        g
+                      }
                     }
+
   def global_string = global_id ~ "= private unnamed_addr constant" ~ array_type ~
                       constant_string ~ alignment ^^
                       {
@@ -125,10 +134,16 @@ object Parser extends JavaTokenParsers {
                          }
 
   def ir_type = lazy_ir_type ^^ { case l => l() }  // evaluate now
-  def lazy_ir_type: Parser[Later[Type]] = prim_type ~ rep("*") ^^
-                { case p~Nil   => p
-                  case p~stars => PointerType(p, stars.size)
+  def lazy_ir_type: Parser[Later[Type]] = ptr_type ~
+                    opt("(" ~> repsep(lazy_ir_type, ",") ~ ")" ~ rep("*")) ^^
+                { case b~None => b
+                  case b~Some(ls~")"~Nil)   => FunctionType(b, ls, false)
+                  case b~Some(ls~")"~stars) => PointerType(FunctionType(b, ls, false), stars.size)
                 }
+  def ptr_type: Parser[Later[Type]] = prim_type ~ rep("*") ^^
+                 { case p~Nil   => p
+                   case p~stars => PointerType(p, stars.size)
+                 }
   val int_type = """i(\d+)""".r
   def prim_type: Parser[Later[Type]] = ("float" | "double" | "void" | int_type |
                                         array_type | struct_type | local_id) ^^
@@ -185,10 +200,26 @@ object Parser extends JavaTokenParsers {
   def local_id = "%" ~> llvm_id
   def local_id_lookup = local_id ^^ { case id => symbol_table(id) }
   def label = "%" ~> wholeNumber  // for BBs
-  def constant = constant_int
+  def constant = constant_int | constant_array
   def constant_int = wholeNumber ^^ { case n => ConstantInt(n.toInt, 32) }
+  def constant_array: Parser[Constant] = "[" ~> repsep(typed_value, ",") <~ "]" ^^
+                     {
+                       case ls => ConstantArray(
+                         // throw away the type in the list of (type, val) pairs
+                         ls.head._2.ltype, ls.size, ls.map(_._2), None
+                       )
+                     }
+
   def value = local_id_lookup | global_id_lookup | constant
-  def typed_value = ir_type ~ value ^^ { case t~v => recast(t, v) }
+  def typed_value = typed_val1 | typed_val2
+  def typed_val1 = ir_type ~ value ^^ { case t~v => recast(t, v) }
+  def typed_val2 = ir_type~gep_inst ^^ {
+                     case t~factory => {
+                       val g = factory(None)  // nameless
+                       assert_eq(t, g.ltype)
+                       recast(t, g)
+                     } }
+  
   // sometimes we get more info about a value...
   def recast(t: Type, v: Value): ~[Type, Value] = (v, t) match {
     case (ConstantInt(n, _), IntegerType(bw)) => new ~[Type, Value](t, ConstantInt(n, bw))
@@ -224,18 +255,11 @@ object Parser extends JavaTokenParsers {
   def call_inst   = "call" ~> function_attribs ~> ir_type ~ opt(function_sig) ~
                     function_name ~ arg_list <~ function_attribs ^^
                     { case t~_~c~a => (n: Option[String]) => new CallInst(n, c, t, a) }
-  // mostly shows up for var-arg stuff
+  // mostly shows up for var-arg stuff. TODO refactor with new fxn_type
   def function_sig = "(" ~> repsep(ir_type, ",") <~ ", ...)"<~opt("*")
   def bare_arg_list = repsep(arg, ",")
   def arg_list    = "(" ~> bare_arg_list <~ ")"
-  // probably 'arg' is going to wind up 'constant value' or something
-  def arg: Parser[Value] = arg1 | arg2
-  def arg1 = typed_value ^^ { case t~v => assert_eq(t, v.ltype); v }
-  def arg2 = ir_type~gep_inst ^^ { case t~factory => {
-               val g = factory(None)  // nameless
-               assert_eq(t, g.ltype)
-               g
-             } }
+  def arg: Parser[Value] = typed_value ^^ { case t~v => v }
   
   def bitcast_inst = "bitcast"~>ir_type~value~"to"~ir_type ^^
                      { case t1~v~"to"~t2 =>

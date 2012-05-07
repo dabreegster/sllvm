@@ -28,13 +28,20 @@ case class LabelType() extends Type() {
   override def toString = "label"
 }
 case class ArrayType(base: Type, size: Int) extends Type() {
+  // TODO lazy of types too
   override def toString = "array[" + base + " ](" + size + ")"
 
   // TODO dubious
   def ptr_to_member = base.ptr_to
 }
-case class PointerType(base: Type, levels: Int) extends Type() {
+case class PointerType(base_factory: Later[Type], levels: Int) extends Type() {
+  lazy val base = base_factory()
+
   override def toString = base + ("*" * levels)
+  override def equals(other: Any) = other match {
+    case x: PointerType => (base == x.base && levels == x.levels)
+    case _ => false
+  }
   override def deref = if (levels == 1)
                          base
                        else
@@ -52,8 +59,16 @@ case class StructType(fields_factory: List[Later[Type]]) extends Type() {
 
   override def toString = "type { " + fields.map(_.toString).mkString(", ") + " }"
 }
-case class FunctionType(ret_type: Type, param_types: List[Type],
+case class FunctionType(ret_factory: Later[Type], params_factory: List[Later[Type]],
                         var_arg: Boolean) extends Type()
 {
+  lazy val ret_type = ret_factory()
+  lazy val param_types = params_factory.map(_())
+
+  override def equals(other: Any) = other match {
+    case x: FunctionType => (ret_type == x.ret_type && param_types == x.param_types)
+    case _ => false
+  }
+
   override def toString = "f :: " + param_types + " -> " + ret_type
 }

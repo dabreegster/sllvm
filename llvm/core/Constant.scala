@@ -30,6 +30,13 @@ case class ConstantString(s: String, size: Int, opt_name: Option[String]) extend
   def ir_form = "c\"" + s + "\""
 }
 
+case class ConstantArray(base_type: Type, size: Int, contents: List[Value],
+                         opt_name: Option[String], junk: String = "")
+      extends Constant(opt_name, ArrayType(base_type, size))
+{
+  def ir_form = "[" + contents.map(_.full_name).mkString(", ") + "]" + junk
+}
+
 //class ConstantArray() extends Constant() {
   // TODO constructor
 //}

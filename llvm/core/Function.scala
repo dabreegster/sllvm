@@ -1,9 +1,12 @@
 package llvm.core
 
+import llvm.Util._
+
 class Function(name: Option[String], val ret_type: Type,
                val params: List[Parameter], val parent: Module,
                junk: String = ""
-              ) extends Value(name, ret_type) // TODO FunctionType(...)?
+              )
+  extends Value(name, FunctionType(ret_type, params.map(p => later { p.ltype }), false))
 {
   var blocks: List[BasicBlock] = Nil
 
