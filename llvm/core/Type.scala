@@ -77,12 +77,3 @@ case class FunctionType(ret_factory: Later[Type], params_factory: List[Later[Typ
 
   override def toString = "f :: " + param_types + " -> " + ret_type
 }
-
-case class ZeroType() extends Type() {
-  // TODO override equals with array types
-  override def toString = "zeros"
-}
-
-case class NullType() extends Type() {
-  override def toString = "null"
-}

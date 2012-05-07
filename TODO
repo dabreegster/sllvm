@@ -5,9 +5,11 @@
 - make output of parsed sllvm be identical to input
   - var-args
   - intrinsics
+  - unescape constant strings
   - run through tests for the rest
 
 - Immutable construction (aka really clean code)
+  - regroup to even get rid of named_inst and laters
   - fill out User operands
   - anywhere with factories, override equals()
 

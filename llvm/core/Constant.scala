@@ -22,35 +22,42 @@ case class ConstantFP(val n: Double) extends Constant(None, DoubleType()) {
   override def full_name = ltype + " " + n
 }
 
-case class ConstantString(s: String, size: Int, opt_name: Option[String]) extends Constant(
-  opt_name, ArrayType(IntegerType(8), size)
-) {
+case class ConstantString(t: Type, s: String, opt_name: Option[String])
+    extends Constant(opt_name, t)
+{
   // TODO this should really be a case of ConstantArray
+  // TODO gotta unescape the string first
+  //assert_eq(ltype, ArrayType(IntegerType(8), s.size))
 
   def ir_form = "c\"" + s + "\""
 }
 
-case class ConstantArray(base_type: Type, size: Int, contents: List[Value],
+// TODO Array, not List
+case class ConstantArray(array_ltype: ArrayType, contents: List[Value],
                          opt_name: Option[String], junk: String = "")
-      extends Constant(opt_name, ArrayType(base_type, size))
+      extends Constant(opt_name, array_ltype)
 {
+  contents.foreach(v => assert_eq(v.ltype, base_type))
+
+  def base_type = array_ltype.base
+  def size = array_ltype.size
+
   def ir_form = "[" + contents.map(_.full_name).mkString(", ") + "]" + junk
 }
 
 // LLVM's way of not specifying tons of 0's
-case class ConstantZeros() extends Constant(None, ZeroType()) {
+case class ConstantZeros(t: Type) extends Constant(None, t) {
   def ir_form = "zeroinitializer"
 }
 
-case class ConstantNull(inferred_type: Type = IntegerType(32).ptr_to)
-  extends Constant(None, inferred_type)
-{
+case class ConstantNull(t: Type) extends Constant(None, t) {
   def ir_form = "null"
 }
 
-case class ConstantStruct(full_ltype: Type, contents: List[Value])
-    extends Constant(None, full_ltype)
+case class ConstantStruct(t: Type, contents: List[Value]) extends Constant(None, t)
 {
+  assert_eq(ltype, StructType(contents.map(v => later { v.ltype })))
+
   def ir_form = "{ " + contents.map(_.full_name).mkString(", ") + " }"
 }
 

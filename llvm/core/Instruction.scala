@@ -29,12 +29,8 @@ abstract class TerminatorInst(ltype: Type, name: Option[String],
   // then normal/terminator versions of call could be possible
 }
 
-class ReturnInst(ret_val: Value, ret_type: Type)
-      extends TerminatorInst(ret_val.ltype, None, Set())
+class ReturnInst(ret_val: Value) extends TerminatorInst(ret_val.ltype, None, Set())
 {
-  assert_eq(ltype, ret_type)
-  // TODO type should involve the ret_val type, right?
-
   def ir_form = "ret " + ret_val.full_name
 }
 
@@ -50,12 +46,10 @@ class UnconditionalBranchInst(val target: BasicBlock)
   def ir_form = "br label " + target.id
 }
 
-class BranchInst(ltype: Type, val test_val: Value, val true_target: BasicBlock,
+class BranchInst(val test_val: Value, val true_target: BasicBlock,
                  val false_target: BasicBlock)
       extends TerminatorInst(VoidType(), None, Set(true_target, false_target))
 {
-  assert_eq(ltype, test_val.ltype)
-
   def ir_form = "br %s, label %s, label %s".format(
     test_val.full_name, true_target.id, false_target.id
   )
@@ -66,11 +60,9 @@ class UnreachableInst() extends TerminatorInst(VoidType(), None, Set())
   def ir_form = "unreachable"
 }
 
-class SwitchInst(ltype: Type, val test_val: Value,
-                 val default_target: BasicBlock, val targets: List[(Value, BasicBlock)]
-    ) extends TerminatorInst(
-      VoidType(), None, (default_target :: targets.map(_._2)).toSet
-    )
+class SwitchInst(val test_val: Value, val default_target: BasicBlock,
+                 val targets: List[(Value, BasicBlock)])
+  extends TerminatorInst(VoidType(), None, (default_target :: targets.map(_._2)).toSet)
 {
   def ir_form = "switch " + test_val.full_name + ", label %" +
       default_target.name.get + "[\n" +
@@ -87,32 +79,28 @@ class AllocaInst(name: Option[String], ltype: Type, junk: String = "")
   override def gv_form = name.get + " = alloca " + alloced_type
 }
 
-class StoreInst(name: Option[String], val src: Value, src_type: Type,
-                val dst: Value, dst_type: Type, junk: String = "")
+class StoreInst(name: Option[String], val src: Value,
+                val dst: Value, junk: String = "")
       extends Instruction(name, VoidType())
 {
-  assert_eq(src.ltype, src_type)
-  assert_eq(dst.ltype, dst_type)
+  // TODO make sure the dst fits in the src's ptr?
 
   def ir_form = "store %s, %s".format(src.full_name, dst.full_name) + junk
   override def gv_form = "store %s, %s".format(src.full_name, dst.full_name)
 }
 
-class LoadInst(name: Option[String], val src: Value, src_type: Type, junk: String = "")
-      extends Instruction(name, src_type.deref)
+class LoadInst(name: Option[String], val src: Value, junk: String = "")
+      extends Instruction(name, src.ltype.deref)
 {
-  assert_eq(src.ltype, src_type)
-
   def ir_form = "load " + src.full_name + junk
   override def gv_form = name.get + " = load " + src.full_name
 }
 
-class IcmpInst(name: Option[String], val op: String, cmp_type: Type,
+class IcmpInst(name: Option[String], val op: String,
                val val1: Value, val val2: Value
               ) extends Instruction(name, IntegerType(1))
 {
-  assert_eq(cmp_type, val1.ltype)
-  assert_eq(cmp_type, val2.ltype)
+  assert_eq(val1.ltype, val2.ltype)
 
   def val_type = val1.ltype
   def ir_form = "icmp %s %s %s, %s".format(op, val_type, val1.id, val2.id)
@@ -153,12 +141,11 @@ class IndirectCallInst(name: Option[String], call: Value, ltype: Type,
 
 // The many instances are boilerplate and boring. Could make op an enum at
 // least?
-class MathInst(name: Option[String], val op: String, ltype: Type,
+class MathInst(name: Option[String], val op: String,
                val v1: Value, val v2: Value
-              ) extends Instruction(name, ltype)
+              ) extends Instruction(name, v1.ltype)
 {
-  assert_eq(ltype, v1.ltype)
-  assert_eq(ltype, v2.ltype)
+  assert_eq(v1.ltype, v2.ltype)
 
   // TODO record the spec too for add/sub
   def ir_form = op + " " + ltype + " " + v1.id + ", " + v2.id
@@ -166,11 +153,9 @@ class MathInst(name: Option[String], val op: String, ltype: Type,
 
 // Likewise, many boring instances
 class CastInst(name: Option[String], op: String, target_type: Type,
-               value: Value, val_type: Type
-              ) extends Instruction(name, target_type)
+               value: Value)
+    extends Instruction(name, target_type)
 {
-  assert_eq(value.ltype, val_type)
-
   def ir_form = op + " " + value.full_name + " to " + ltype
 }
 
@@ -203,12 +188,10 @@ object GEPInst {
   }
 }
 
-class SelectInst(name: Option[String], select_type: Type, select_val: Value,
-                 t1: Type, v1: Value, t2: Type, v2: Value)
-      extends Instruction(name, t1)
+class SelectInst(name: Option[String], select_val: Value, v1: Value, v2: Value)
+    extends Instruction(name, v1.ltype)
 {
-  assert_eq(select_type, select_val.ltype)
-  assert_eq(t1, t2)
+  assert_eq(v1.ltype, v2.ltype)
 
   def ir_form = "select " + select_val.full_name + ", " + v1.full_name + ", " + v2.full_name
 }
