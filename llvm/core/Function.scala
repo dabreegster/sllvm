@@ -31,4 +31,8 @@ class Function(name: Option[String], val ret_type: Type,
                 else
                   "define " + full_name + param_ir_form + junk +
                   " {\n" + blocks.map(_.ir_form).mkString("\n") + "\n}\n"
+  override def toString = "Function " + name.get
+  def graphviz = "  subgraph cluster_%s {\n    label=\"%s\";\n%s  }\n".format(
+    name.get, this, blocks.map(bb => bb.detailed_graphviz).mkString("")
+  )
 }

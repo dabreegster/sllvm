@@ -17,35 +17,42 @@ abstract class Instruction(name: Option[String], ltype: Type) extends User(name,
 
   def function = parent.parent
   def module = function.parent
+  def gv_form = toString
 }
 
-abstract class TerminatorInst(ltype: Type, name: Option[String] = None
-                             ) extends Instruction(name, ltype)
+abstract class TerminatorInst(ltype: Type, name: Option[String],
+                              var succs: List[BasicBlock])
+                extends Instruction(name, ltype)
 {
-  // TODO constructor
-  var succs: List[BasicBlock] = Nil
+  // successor list is 'var' due to CallInst
+  // TODO perhaps making TerminatorInst be a trait is cleaner?
+  // then normal/terminator versions of call could be possible
 }
 
-class ReturnInst(ret_val: Value, ret_type: Type) extends TerminatorInst(ret_val.ltype) {
+class ReturnInst(ret_val: Value, ret_type: Type)
+      extends TerminatorInst(ret_val.ltype, None, Nil)
+{
   assert_eq(ltype, ret_type)
   // TODO type should involve the ret_val type, right?
 
   def ir_form = "ret " + ret_val.full_name
 }
 
-class VoidReturnInst() extends TerminatorInst(VoidType()) {
+class VoidReturnInst() extends TerminatorInst(VoidType(), None, Nil) {
   // TODO related to above how?
 
   def ir_form = "ret void"
 }
 
-class UnconditionalBranchInst(val target: BasicBlock) extends TerminatorInst(VoidType())
+class UnconditionalBranchInst(val target: BasicBlock)
+      extends TerminatorInst(VoidType(), None, List(target))
 {
   def ir_form = "br label " + target.id
 }
 
 class BranchInst(ltype: Type, val test_val: Value, val true_target: BasicBlock,
-                 val false_target: BasicBlock) extends TerminatorInst(VoidType())
+                 val false_target: BasicBlock)
+      extends TerminatorInst(VoidType(), None, List(true_target, false_target))
 {
   assert_eq(ltype, test_val.ltype)
 
@@ -61,6 +68,7 @@ class AllocaInst(name: Option[String], ltype: Type, junk: String = "")
 
   def alloced_type = ltype.deref
   def ir_form = "alloca " + alloced_type + junk
+  override def gv_form = name.get + " = alloca " + alloced_type
 }
 
 class StoreInst(name: Option[String], val src: Value, src_type: Type,
@@ -71,6 +79,7 @@ class StoreInst(name: Option[String], val src: Value, src_type: Type,
   assert_eq(dst.ltype, dst_type)
 
   def ir_form = "store %s, %s".format(src.full_name, dst.full_name) + junk
+  override def gv_form = "store %s, %s".format(src.full_name, dst.full_name)
 }
 
 class LoadInst(name: Option[String], val src: Value, src_type: Type, junk: String = "")
@@ -79,6 +88,7 @@ class LoadInst(name: Option[String], val src: Value, src_type: Type, junk: Strin
   assert_eq(src.ltype, src_type)
 
   def ir_form = "load " + src.full_name + junk
+  override def gv_form = name.get + " = load " + src.full_name
 }
 
 class IcmpInst(name: Option[String], val op: String, cmp_type: Type,
@@ -105,7 +115,7 @@ class PHIInst(name: Option[String], ltype: Type,
 
 class CallInst(name: Option[String], call: String, ltype: Type,
                val args: List[Value]
-              ) extends TerminatorInst(ltype, name)
+              ) extends TerminatorInst(ltype, name, Nil)
 {
   lazy val callee: Function = {
     val f = module.fxn_table(call)

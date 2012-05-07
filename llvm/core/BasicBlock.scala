@@ -29,11 +29,12 @@ class BasicBlock(name: Option[String]) extends Value(name, LabelType()) {
       // split this BB into two
       // TODO make sure we stitch up ALL the references?
       val bb1 = new BasicBlock(name).setup(header, end, preds)
-      val bb2 = new BasicBlock(Some(name.get + "'")).setup(
+      val bb2 = new BasicBlock(Some(name.get + "p")).setup(
         rest, term_inst, List(bb1)
       )
-      end.succs = List(bb2)    // TODO how to do more cleanly?
-      bb1 :: bb2.split(by)
+      val new_bb2 = bb2.split(by)
+      end.succs = List(new_bb2.head)
+      bb1 :: new_bb2
     }
     
     // No matching instructions, do nothing
@@ -51,4 +52,16 @@ class BasicBlock(name: Option[String]) extends Value(name, LabelType()) {
                   else
                     "\n%-50s%s\n".format("; <label>:" + name.get, "; preds = " +
                     preds.map(_.id).mkString(", "))
+  override def toString = "BB " + parent.name.get + "/" + name.get
+  def gv_name = "bb_" + parent.name.get + "_" + name.get
+  def outline_graphviz = "    %s [label=\"%s\"];\n%s\n".format(
+    gv_name, this,
+    succs.map(s => "    %s -> %s;".format(gv_name, s.gv_name)).mkString("\n")
+  )
+  def gv_form = this + "\\n" + instructions.map(_.gv_form).mkString("\\l") + "\\l"
+  def detailed_graphviz = "    %s [shape=box, label=\"%s\"];\n%s\n".format(
+    gv_name, gv_form,
+    succs.map(s => "    %s -> %s;".format(gv_name, s.gv_name)).mkString("\n")
+  )
+
 }

@@ -8,10 +8,11 @@
 
 - Immutable construction (aka really clean code)
   - fill out User operands
-  - things like BB succs aren't set... go through and make sure all these're fine
   - anywhere with factories, override equals()
 
-- graphviz output
+- better graphviz output
+  - interprocedural caller/callee edges
+- wacky procedural generation visualization experiments
 
 - Build script(s)
 - Bigger tests

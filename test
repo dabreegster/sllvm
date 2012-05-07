@@ -3,6 +3,7 @@
 INPUT=examples/passes6.s
 RUN=llvm.EchoTest
 #RUN=llvm.SplitAtCall
+#RUN=llvm.VizTest
 
 ./build &&
 scala -cp .build $RUN $INPUT

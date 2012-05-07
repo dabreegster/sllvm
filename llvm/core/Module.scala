@@ -10,4 +10,5 @@ class Module(val make_functions: List[(Module) => Function],
   def ir_form = junk.mkString("\n") + "\n\n" + globals.map(_.toString).mkString("\n") +
                 (if (globals.isEmpty) "" else "\n\n") +
                 functions.map(_.ir_form).mkString("\n")
+  def graphviz = functions.map(_.graphviz).mkString("\n") // TODO calls?
 }
