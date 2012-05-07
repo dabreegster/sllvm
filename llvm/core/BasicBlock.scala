@@ -33,7 +33,7 @@ class BasicBlock(name: Option[String]) extends Value(name, LabelType()) {
         rest, term_inst, List(bb1)
       )
       val new_bb2 = bb2.split(by)
-      end.succs = List(new_bb2.head)
+      end.succs = Set(new_bb2.head)
       bb1 :: new_bb2
     }
     

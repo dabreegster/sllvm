@@ -42,7 +42,7 @@ case class ConstantZeros() extends Constant(None, ZeroType()) {
   def ir_form = "zeroinitializer"
 }
 
-case class ConstantNull() extends Constant(None, NullType()) {
+case class ConstantNull() extends Constant(None, IntegerType(32).ptr_to) {
   def ir_form = "null"
 }
 

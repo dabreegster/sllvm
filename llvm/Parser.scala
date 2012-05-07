@@ -44,16 +44,16 @@ object Parser extends JavaTokenParsers {
   }
 
   def module = comment ~ rep(target) ~ rep(type_decl) ~ rep(global_decl) ~
-               rep(function) ~ rep(fxn_declares) ^^
-               { case j1~j2~_~globals~fxns~declares => new Module(
-                   fxns ++ declares, globals, j1 :: j2
+               rep(function | fxn_declare) ^^
+               { case j1~j2~_~globals~fxns => new Module(
+                   fxns, globals, j1 :: j2
                  )
                }
   def comment = """;.*""".r
   def target  = """target.*""".r
   def llvm_id = ("""[a-zA-Z$._][a-zA-Z$._0-9]*""".r | wholeNumber)
   // TODO this throws away params
-  def fxn_declares = "declare"~>ir_type~function_name~function_sig ^^
+  def fxn_declare = "declare"~>ir_type~function_name~function_sig ^^
                      { case t~n~_ => (m: Module) => new Function(
                          parent = m,
                          name = Some(n),
@@ -106,18 +106,26 @@ object Parser extends JavaTokenParsers {
                  }
   def function_name = "@" ~> ident
   def param_list = "(" ~> repsep(param_pair, ",") <~ ")"
-  def param_pair = (ir_type ~ local_id) ^^
-                   { case t~n => {
+  def param_attrib_ls = rep(param_attrib)
+  def param_attrib = ("zeroext" | "signext" | "inreg" | "byval" | "sret" |
+                      "noalias" | "nocapture" | "nest")
+  def param_pair = (ir_type ~ param_attrib_ls ~ local_id) ^^
+                   { case t~_~n => {
                        val p = new Parameter(Some(n), t)
                        symbol_table(n) = p
                        p
                      }
                    }
+  // TODO pre is linkage? post is what?
   def function_pre_attribs = opt("internal")
-  def function_post_attribs = opt("nounwind" | "noalias") ^^ {
-                           case Some(a) => " " + a
-                           case None    => ""
-                         }
+  def function_post_attribs = rep(fxn_attrib) ^^ {
+    case ls => ls.mkString(" ")
+  }
+  def fxn_attrib = ("address_safety" | """alignstack\(\d+\)""".r | "alwaysinline" |
+                    "nonlazybind" | "inlinehint" | "naked" | "noimplicitfloat" |
+                    "noinline" | "noredzone" | "noreturn" | "nounwind" |
+                    "optsize" | "readnone" | "readonly" | "returns_twice" |
+                    "ssp" | "sspreq" | "uwtable")
 
   def ir_type = lazy_ir_type ^^ { case l => l() }  // evaluate now
   def lazy_ir_type: Parser[Later[Type]] = ptr_type ~
@@ -149,7 +157,8 @@ object Parser extends JavaTokenParsers {
   def bb_header = "; <label>:" ~> wholeNumber ~ "; preds =" ~
                   repsep(label, ",") ^^
                   { case lbl~junk~preds => lbl :: preds }
-  def bb = opt(bb_header) ~ rep(named_inst|unnamed_inst) ~ term_inst ^^
+  def bb_lack_header = "; No predecessors!" ^^ { case _ => List("no_preds") }
+  def bb = opt(bb_header | bb_lack_header) ~ rep(named_inst|unnamed_inst) ~ term_inst ^^
            {
              case Some(lbl :: preds)~i~t => (lookup_bb(lbl)).setup(
                i, t, preds.map(lookup_bb)
@@ -158,7 +167,8 @@ object Parser extends JavaTokenParsers {
              case _ => throw new Exception("Impossible match parsing bb")
            }
 
-  def term_inst = void_ret_inst | ret_inst | uncond_br_inst | br_inst
+  def term_inst = void_ret_inst | ret_inst | uncond_br_inst | br_inst |
+                  switch_inst | unreachable_inst
   // note: splitting up disjunctions explicitly somehow helps type inference
   def void_ret_inst = "ret void" ^^ { case _ => new VoidReturnInst() }
   def ret_inst = "ret"~>typed_value ^^ { case t~v => new ReturnInst(v, t) }
@@ -170,6 +180,12 @@ object Parser extends JavaTokenParsers {
                     t, v, lookup_bb(t1), lookup_bb(t2)
                   )
                 }
+  def unreachable_inst = "unreachable" ^^ { case _ => new UnreachableInst() }
+  def switch_inst = "switch"~>typed_value~", label"~label~"["~rep(switch_target)~"]" ^^
+  {
+    case t~v~_~default~"["~ls~"]" => new SwitchInst(t, v, lookup_bb(default), ls)
+  }
+  def switch_target = typed_value ~ ", label" ~ label ^^ { case _~v~_~l => (v, lookup_bb(l)) }
 
   def named_inst = local_id ~ "=" ~ inst ^^
                  {
@@ -185,6 +201,7 @@ object Parser extends JavaTokenParsers {
              call_inst | math_inst | cast_inst | gep_inst
   def local_id = "%" ~> llvm_id
   def local_id_lookup = local_id ^^ { case id => symbol_table(id) }
+  // TODO make it slurp the "label" part too, and change preds?
   def label = "%" ~> wholeNumber  // for BBs
   // do it in this order particularly for all the types of numbers
   def constant = (constant_hex_int | constant_num | constant_array |
@@ -227,7 +244,7 @@ object Parser extends JavaTokenParsers {
 
   def value = local_id_lookup | global_id_lookup | constant
   def typed_value = typed_val1 | typed_val2
-  def typed_val1 = ir_type ~ value ^^ { case t~v => wrap_cast(recast(t, v)) }
+  def typed_val1 = ir_type ~ param_attrib_ls ~ value ^^ { case t~_~v => wrap_cast(recast(t, v)) }
   def typed_val2 = ir_type~gep_inst ^^ {
                      case t~factory => {
                        val g = factory(None)  // nameless

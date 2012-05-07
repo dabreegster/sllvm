@@ -21,7 +21,7 @@ abstract class Instruction(name: Option[String], ltype: Type) extends User(name,
 }
 
 abstract class TerminatorInst(ltype: Type, name: Option[String],
-                              var succs: List[BasicBlock])
+                              var succs: Set[BasicBlock])
                 extends Instruction(name, ltype)
 {
   // successor list is 'var' due to CallInst
@@ -30,7 +30,7 @@ abstract class TerminatorInst(ltype: Type, name: Option[String],
 }
 
 class ReturnInst(ret_val: Value, ret_type: Type)
-      extends TerminatorInst(ret_val.ltype, None, Nil)
+      extends TerminatorInst(ret_val.ltype, None, Set())
 {
   assert_eq(ltype, ret_type)
   // TODO type should involve the ret_val type, right?
@@ -38,27 +38,43 @@ class ReturnInst(ret_val: Value, ret_type: Type)
   def ir_form = "ret " + ret_val.full_name
 }
 
-class VoidReturnInst() extends TerminatorInst(VoidType(), None, Nil) {
+class VoidReturnInst() extends TerminatorInst(VoidType(), None, Set()) {
   // TODO related to above how?
 
   def ir_form = "ret void"
 }
 
 class UnconditionalBranchInst(val target: BasicBlock)
-      extends TerminatorInst(VoidType(), None, List(target))
+      extends TerminatorInst(VoidType(), None, Set(target))
 {
   def ir_form = "br label " + target.id
 }
 
 class BranchInst(ltype: Type, val test_val: Value, val true_target: BasicBlock,
                  val false_target: BasicBlock)
-      extends TerminatorInst(VoidType(), None, List(true_target, false_target))
+      extends TerminatorInst(VoidType(), None, Set(true_target, false_target))
 {
   assert_eq(ltype, test_val.ltype)
 
   def ir_form = "br %s, label %s, label %s".format(
     test_val.full_name, true_target.id, false_target.id
   )
+}
+
+class UnreachableInst() extends TerminatorInst(VoidType(), None, Set())
+{
+  def ir_form = "unreachable"
+}
+
+class SwitchInst(ltype: Type, val test_val: Value,
+                 val default_target: BasicBlock, val targets: List[(Value, BasicBlock)]
+    ) extends TerminatorInst(
+      VoidType(), None, (default_target :: targets.map(_._2)).toSet
+    )
+{
+  def ir_form = "switch " + test_val.full_name + ", label %" +
+      default_target.name.get + "[\n" +
+      targets.map(t => t._1.full_name + ", label %" + t._2.name.get).mkString("\n") + "\n]"
 }
 
 class AllocaInst(name: Option[String], ltype: Type, junk: String = "")
@@ -115,7 +131,7 @@ class PHIInst(name: Option[String], ltype: Type,
 
 class CallInst(name: Option[String], call: String, ltype: Type,
                val args: List[Value]
-              ) extends TerminatorInst(ltype, name, Nil)
+              ) extends TerminatorInst(ltype, name, Set())
 {
   lazy val callee: Function = {
     val f = module.fxn_table(call)
