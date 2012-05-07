@@ -143,6 +143,14 @@ class CallInst(name: Option[String], call: String, ltype: Type,
                 args.map(_.full_name).mkString(", ") + ")"
 }
 
+class IndirectCallInst(name: Option[String], call: Value, ltype: Type,
+                       val args: List[Value]
+                      ) extends TerminatorInst(ltype, name, Set())
+{
+  def ir_form = "call " + call.id + "(" +
+                args.map(_.full_name).mkString(", ") + ")"
+}
+
 // The many instances are boilerplate and boring. Could make op an enum at
 // least?
 class MathInst(name: Option[String], val op: String, ltype: Type,
@@ -153,7 +161,7 @@ class MathInst(name: Option[String], val op: String, ltype: Type,
   assert_eq(ltype, v2.ltype)
 
   // TODO record the spec too for add/sub
-  def ir_form = op + " " + ltype + " " + v1 + ", " + v2
+  def ir_form = op + " " + ltype + " " + v1.id + ", " + v2.id
 }
 
 // Likewise, many boring instances
@@ -193,4 +201,14 @@ object GEPInst {
 
     return cur.ptr_to
   }
+}
+
+class SelectInst(name: Option[String], select_type: Type, select_val: Value,
+                 t1: Type, v1: Value, t2: Type, v2: Value)
+      extends Instruction(name, t1)
+{
+  assert_eq(select_type, select_val.ltype)
+  assert_eq(t1, t2)
+
+  def ir_form = "select " + select_val.full_name + ", " + v1.full_name + ", " + v2.full_name
 }

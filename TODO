@@ -4,6 +4,7 @@
 
 - make output of parsed sllvm be identical to input
   - var-args
+  - intrinsics
   - run through tests for the rest
 
 - Immutable construction (aka really clean code)

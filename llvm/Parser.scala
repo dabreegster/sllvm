@@ -53,7 +53,7 @@ object Parser extends JavaTokenParsers {
   def target  = """target.*""".r
   def llvm_id = ("""[a-zA-Z$._][a-zA-Z$._0-9]*""".r | wholeNumber)
   // TODO this throws away params
-  def fxn_declare = "declare"~>ir_type~function_name~function_sig ^^
+  def fxn_declare = "declare"~>param_attrib_ls~>ir_type~function_name~function_sig ^^
                      { case t~n~_ => (m: Module) => new Function(
                          parent = m,
                          name = Some(n),
@@ -117,7 +117,7 @@ object Parser extends JavaTokenParsers {
                      }
                    }
   // TODO pre is linkage? post is what?
-  def function_pre_attribs = opt("internal")
+  def function_pre_attribs = opt("internal") ~ param_attrib_ls
   def function_post_attribs = rep(fxn_attrib) ^^ {
     case ls => ls.mkString(" ")
   }
@@ -186,6 +186,13 @@ object Parser extends JavaTokenParsers {
     case t~v~_~default~"["~ls~"]" => new SwitchInst(t, v, lookup_bb(default), ls)
   }
   def switch_target = typed_value ~ ", label" ~ label ^^ { case _~v~_~l => (v, lookup_bb(l)) }
+  // TODO typed_value and type inference aren't playing well :(
+  def select_inst = "select"~>ir_type~value~","~ir_type~value~","~ir_type~value ^^
+            {
+              case sel_t~sel_v~","~t1~v1~","~t2~v2 => (n: Option[String]) => new SelectInst(
+                n, sel_t, sel_v, t1, v1, t2, v2
+              )
+            }
 
   def named_inst = local_id ~ "=" ~ inst ^^
                  {
@@ -198,7 +205,8 @@ object Parser extends JavaTokenParsers {
   def unnamed_inst = inst ^^ { case i => i(None) }
 
   def inst = alloca_inst | store_inst | load_inst | icmp_inst | phi_inst |
-             call_inst | math_inst | cast_inst | gep_inst
+             call_inst | indirect_call_inst | math_inst | cast_inst | gep_inst |
+             select_inst
   def local_id = "%" ~> llvm_id
   def local_id_lookup = local_id ^^ { case id => symbol_table(id) }
   // TODO make it slurp the "label" part too, and change preds?
@@ -255,6 +263,8 @@ object Parser extends JavaTokenParsers {
   // sometimes we get more info about a value...
   def recast(t: Type, v: Value) = (v, t) match {
     case (ConstantInt(n, _), IntegerType(bw)) => (t, ConstantInt(n, bw))
+    // null can be anything
+    case (ConstantNull(_), _)                 => (t, ConstantNull(t))
     case (v, t)                               => (t, v)
     // TODO assert types eq in second case?
   }
@@ -275,10 +285,9 @@ object Parser extends JavaTokenParsers {
                     { case t~sv~junk => (n: Option[String]) => new LoadInst(n, sv, t, junk)
                     }
   def icmp_inst   = "icmp" ~> icmp_op ~ ir_type ~ value ~ "," ~ value ^^
-                    { case op~t~raw_v1~","~raw_v2 =>
-                      val v1 = recast(t, raw_v1)._2
-                      val v2 = recast(t, raw_v2)._2
-                      (n: Option[String]) => new IcmpInst(n, op, t, v1, v2)
+                    { case op~t~v1~","~v2 => (n: Option[String]) => new IcmpInst(
+                        n, op, t, recast(t, v1)._2, recast(t, v2)._2
+                      )
                     }
   def icmp_op     = ("eq" | "ne" | "ugt" | "uge" | "ult" | "ule" |
                      "sgt" | "sge" | "slt" | "sle")
@@ -286,18 +295,25 @@ object Parser extends JavaTokenParsers {
                     { case t~cases => (n: Option[String]) => new PHIInst(n, t, cases) }
   def phi_case    = "[" ~> value ~ "," ~ label <~ "]" ^^
                     { case v~","~l => (v, lookup_bb(l)) }
-  def call_inst   = "call" ~> function_post_attribs ~> ir_type ~ opt(function_sig) ~
-                    function_name ~ arg_list <~ function_post_attribs ^^
+  def call_inst   = "call" ~> function_post_attribs ~> param_attrib_ls ~> ir_type ~
+                    opt(function_sig) ~ function_name ~ arg_list <~ function_post_attribs ^^
                     { case t~_~c~a => (n: Option[String]) => new CallInst(n, c, t, a) }
+  def indirect_call_inst = "call" ~> function_post_attribs ~> param_attrib_ls ~> ir_type ~
+                            opt(function_sig) ~ local_id_lookup ~ arg_list <~
+                            function_post_attribs ^^
+              { case t~_~v~a => (n: Option[String]) => new IndirectCallInst(n, v, t, a) }
   // mostly shows up for var-arg stuff. TODO refactor with new fxn_type
-  def function_sig = "(" ~> repsep(ir_type, ",") <~ ", ...)"<~opt("*")
+  def function_sig = "(" ~> repsep(ir_type, ",") <~ opt(", ...") <~ ")" <~
+                     opt("*") <~ function_post_attribs
   def bare_arg_list = repsep(arg, ",")
   def arg_list    = "(" ~> bare_arg_list <~ ")"
   def arg: Parser[Value] = typed_value ^^ { case t~v => v }
   
   def math_inst = math_op~math_specs~ir_type~value~","~value ^^
                  { case op~_~t~v1~_~v2 =>
-                    (n: Option[String]) => new MathInst(n, op, t, v1, v2)
+                    (n: Option[String]) => new MathInst(
+                      n, op, t, recast(t, v1)._2, recast(t, v2)._2
+                    )
                  }
   def math_specs = opt("nuw")~opt("nsw")
   def math_op = ("add" | "fadd" | "sub" | "fsub" | "mul" | "fmul" | "udiv" |
