@@ -127,27 +127,29 @@ class CallInst(name: Option[String], call: String, ltype: Type,
                 args.map(_.full_name).mkString(", ") + ")"
 }
 
-class BitcastInst(name: Option[String], target_type: Type,
-                  value: Value, val_type: Type
-                 ) extends Instruction(name, target_type)
-{
-  assert_eq(value.ltype, val_type)
-
-  def ir_form = "bitcast " + value.full_name + " to " + ltype
-}
-
-class AddInst(name: Option[String], ltype: Type, val v1: Value,
-              val v2: Value
-             ) extends Instruction(name, ltype)
+// The many instances are boilerplate and boring. Could make op an enum at
+// least?
+class MathInst(name: Option[String], val op: String, ltype: Type,
+               val v1: Value, val v2: Value
+              ) extends Instruction(name, ltype)
 {
   assert_eq(ltype, v1.ltype)
   assert_eq(ltype, v2.ltype)
 
-  // TODO record the spec too
-  def ir_form = "add " + ltype + " " + v1 + ", " + v2
+  // TODO record the spec too for add/sub
+  def ir_form = op + " " + ltype + " " + v1 + ", " + v2
 }
 
-// TODO the first index is always bogus? always 0 to deref the ptr?
+// Likewise, many boring instances
+class CastInst(name: Option[String], op: String, target_type: Type,
+               value: Value, val_type: Type
+              ) extends Instruction(name, target_type)
+{
+  assert_eq(value.ltype, val_type)
+
+  def ir_form = op + " " + value.full_name + " to " + ltype
+}
+
 class GEPInst(name: Option[String], val fields: List[Value]) extends Instruction(
   name, GEPInst.chase_indexed_type(fields)
 ) {
@@ -175,13 +177,4 @@ object GEPInst {
 
     return cur.ptr_to
   }
-}
-
-class SextInst(name: Option[String], orig_type: Type, val v: Value,
-               new_type: Type
-             ) extends Instruction(name, new_type)
-{
-  assert_eq(orig_type, v.ltype)
-
-  def ir_form = "sext " + orig_type + " " + v + " to " + new_type
 }

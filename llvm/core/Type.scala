@@ -27,8 +27,13 @@ case class LabelType() extends Type() {
   // for BBs
   override def toString = "label"
 }
-case class ArrayType(base: Type, size: Int) extends Type() {
-  // TODO lazy of types too
+case class ArrayType(base_factory: Later[Type], size: Int) extends Type() {
+  lazy val base = base_factory()
+
+  override def equals(other: Any) = other match {
+    case x: ArrayType => (base == x.base && size == x.size)
+    case _ => false
+  }
   override def toString = "array[" + base + " ](" + size + ")"
 
   // TODO dubious
@@ -71,4 +76,13 @@ case class FunctionType(ret_factory: Later[Type], params_factory: List[Later[Typ
   }
 
   override def toString = "f :: " + param_types + " -> " + ret_type
+}
+
+case class ZeroType() extends Type() {
+  // TODO override equals with array types
+  override def toString = "zeros"
+}
+
+case class NullType() extends Type() {
+  override def toString = "null"
 }

@@ -43,7 +43,7 @@ object Parser extends JavaTokenParsers {
     }
   }
 
-  def module = comment ~ rep(target) ~ rep(type_decl) ~ rep(global_string | global_decl) ~
+  def module = comment ~ rep(target) ~ rep(type_decl) ~ rep(global_decl) ~
                rep(function) ~ rep(fxn_declares) ^^
                { case j1~j2~_~globals~fxns~declares => new Module(
                    fxns ++ declares, globals, j1 :: j2
@@ -61,37 +61,22 @@ object Parser extends JavaTokenParsers {
                          params = Nil
                        ) }
 
-  def linkage = opt("external" | "internal")
-  def global_decl = global_id ~ "=" ~ linkage ~ "global" ~ ir_type ~
-                    opt(constant ~ alignment) ^^
-                    { case n~"="~_~"global"~t~Some(c~a) => {
+  def linkage = rep(linkage_attribs)
+  def linkage_attribs = ("external" | "internal" | "private" | "unnamed_addr" |
+                         "constant" | "global" | "common")
+  def global_decl = global_id ~ "=" ~ linkage ~ ir_type ~ opt(constant ~ alignment) ^^
+                    { case n~"="~_~t~Some(c~a) => {
                         val g = new GlobalVariable(Some(n), t.ptr_to, c, a)
                         global_table(n) = g
                         g
                       }
-                      case n~"="~_~"global"~t~None => {
+                      case n~"="~_~t~None => {
                         // TODO no default val...
                         val g = new GlobalVariable(Some(n), t.ptr_to, null)
                         global_table(n) = g
                         g
                       }
                     }
-
-  def global_string = global_id ~ "= private unnamed_addr constant" ~ array_type ~
-                      constant_string ~ alignment ^^
-                      {
-                        case n~_~t~s~_ => {
-                          // TODO not sure of type
-                          // TODO giving it the name twice?
-                          val g = new GlobalVariable(
-                            Some(n), t.ptr_to, ConstantString(s, t.size, Some(n))
-                          )
-                          // add to symbol table
-                          global_table(n) = g
-                          g
-                        }
-                      }
-  def constant_string = "c\"" ~> """[^"]*""".r <~ "\""
             
   def global_id = "@" ~> llvm_id
   def global_id_lookup = global_id ^^ { case id => global_table(id) }
@@ -103,8 +88,8 @@ object Parser extends JavaTokenParsers {
                     }
                   }
 
-  def function = "define" ~> ir_type ~ function_name ~ param_list ~
-                 function_attribs ~ "{" ~ rep(bb) <~ "}" ^^
+  def function = "define" ~> function_pre_attribs~>ir_type ~ function_name ~ param_list ~
+                 function_post_attribs ~ "{" ~ rep(bb) <~ "}" ^^
                  { case t~n~p~a~"{"~b => {
                      val f = (m: Module) => new Function(
                        parent = m,
@@ -128,7 +113,8 @@ object Parser extends JavaTokenParsers {
                        p
                      }
                    }
-  def function_attribs = opt("nounwind" | "noalias") ^^ {
+  def function_pre_attribs = opt("internal")
+  def function_post_attribs = opt("nounwind" | "noalias") ^^ {
                            case Some(a) => " " + a
                            case None    => ""
                          }
@@ -155,7 +141,7 @@ object Parser extends JavaTokenParsers {
                     case s: StructType => s
                     case name          => later { type_table(name.toString) }
                   }
-  def array_type: Parser[ArrayType] = "["~>wholeNumber~"x"~ir_type<~"]" ^^
+  def array_type: Parser[ArrayType] = "["~>wholeNumber~"x"~lazy_ir_type<~"]" ^^
                    { case num~"x"~t => ArrayType(t, num.toInt) }
   def struct_type: Parser[StructType] = "type {" ~> repsep(lazy_ir_type, ",") <~ "}" ^^
                                         { case ls => StructType(ls) }
@@ -196,12 +182,31 @@ object Parser extends JavaTokenParsers {
   def unnamed_inst = inst ^^ { case i => i(None) }
 
   def inst = alloca_inst | store_inst | load_inst | icmp_inst | phi_inst |
-             call_inst | bitcast_inst | add_inst | gep_inst | sext_inst
+             call_inst | math_inst | cast_inst | gep_inst
   def local_id = "%" ~> llvm_id
   def local_id_lookup = local_id ^^ { case id => symbol_table(id) }
   def label = "%" ~> wholeNumber  // for BBs
-  def constant = constant_int | constant_array
-  def constant_int = wholeNumber ^^ { case n => ConstantInt(n.toInt, 32) }
+  // do it in this order particularly for all the types of numbers
+  def constant = (constant_hex_int | constant_num | constant_array |
+                  constant_bool | constant_zeros | constant_string | constant_null |
+                  constant_struct)
+  def constant_hex_int = """0x[0-9A-F]+""".r ^^
+        {
+          // TODO, yes, it throws away the number, but for now...
+          case n => ConstantInt(java.lang.Long.parseLong(n.drop(2), 16).toInt, 64)
+        }
+  def constant_num = floatingPointNumber ^^ {
+    // prefer integers
+    case n => try {
+                ConstantInt(n.toInt, 32)
+              } catch {
+                case _ => ConstantFP(n.toDouble)
+              }
+  }
+  def constant_bool = ("true" | "false") ^^ {
+    case "true"  => ConstantInt(1, 1)
+    case "false" => ConstantInt(0, 1)
+  }
   def constant_array: Parser[Constant] = "[" ~> repsep(typed_value, ",") <~ "]" ^^
                      {
                        case ls => ConstantArray(
@@ -209,23 +214,34 @@ object Parser extends JavaTokenParsers {
                          ls.head._2.ltype, ls.size, ls.map(_._2), None
                        )
                      }
+  def constant_struct: Parser[Constant] = "{" ~> repsep(typed_value, ",") <~ "}" ^^
+                        {
+                          case ls => ConstantStruct(
+                            StructType(ls.map(x => later { x._1 })), ls.map(_._2)
+                          )
+                        }
+  def constant_zeros = "zeroinitializer" ^^ { case _ => ConstantZeros() }
+  def constant_null = "null" ^^ { case _ => ConstantNull() }
+  def constant_string = "c\"" ~> """[^"]*""".r <~ "\"" ^^
+                        { case s => ConstantString(s, s.size, None) }
 
   def value = local_id_lookup | global_id_lookup | constant
   def typed_value = typed_val1 | typed_val2
-  def typed_val1 = ir_type ~ value ^^ { case t~v => recast(t, v) }
+  def typed_val1 = ir_type ~ value ^^ { case t~v => wrap_cast(recast(t, v)) }
   def typed_val2 = ir_type~gep_inst ^^ {
                      case t~factory => {
                        val g = factory(None)  // nameless
                        assert_eq(t, g.ltype)
-                       recast(t, g)
+                       wrap_cast(recast(t, g))
                      } }
   
   // sometimes we get more info about a value...
-  def recast(t: Type, v: Value): ~[Type, Value] = (v, t) match {
-    case (ConstantInt(n, _), IntegerType(bw)) => new ~[Type, Value](t, ConstantInt(n, bw))
-    case (v, t) => new ~[Type, Value](t, v)
+  def recast(t: Type, v: Value) = (v, t) match {
+    case (ConstantInt(n, _), IntegerType(bw)) => (t, ConstantInt(n, bw))
+    case (v, t)                               => (t, v)
     // TODO assert types eq in second case?
   }
+  def wrap_cast(x: (Type, Value)) = new ~[Type, Value](x._1, x._2)
 
   def alloca_inst = "alloca" ~> ir_type ~ alignment ^^
                     { case t~junk => (n: Option[String]) => new AllocaInst(n, t.ptr_to, junk)
@@ -242,8 +258,9 @@ object Parser extends JavaTokenParsers {
                     { case t~sv~junk => (n: Option[String]) => new LoadInst(n, sv, t, junk)
                     }
   def icmp_inst   = "icmp" ~> icmp_op ~ ir_type ~ value ~ "," ~ value ^^
-                    { case op~t~v1~","~v2 =>
-                      // TODO use typed_value and recast v2.
+                    { case op~t~raw_v1~","~raw_v2 =>
+                      val v1 = recast(t, raw_v1)._2
+                      val v2 = recast(t, raw_v2)._2
                       (n: Option[String]) => new IcmpInst(n, op, t, v1, v2)
                     }
   def icmp_op     = ("eq" | "ne" | "ugt" | "uge" | "ult" | "ule" |
@@ -252,8 +269,8 @@ object Parser extends JavaTokenParsers {
                     { case t~cases => (n: Option[String]) => new PHIInst(n, t, cases) }
   def phi_case    = "[" ~> value ~ "," ~ label <~ "]" ^^
                     { case v~","~l => (v, lookup_bb(l)) }
-  def call_inst   = "call" ~> function_attribs ~> ir_type ~ opt(function_sig) ~
-                    function_name ~ arg_list <~ function_attribs ^^
+  def call_inst   = "call" ~> function_post_attribs ~> ir_type ~ opt(function_sig) ~
+                    function_name ~ arg_list <~ function_post_attribs ^^
                     { case t~_~c~a => (n: Option[String]) => new CallInst(n, c, t, a) }
   // mostly shows up for var-arg stuff. TODO refactor with new fxn_type
   def function_sig = "(" ~> repsep(ir_type, ",") <~ ", ...)"<~opt("*")
@@ -261,20 +278,23 @@ object Parser extends JavaTokenParsers {
   def arg_list    = "(" ~> bare_arg_list <~ ")"
   def arg: Parser[Value] = typed_value ^^ { case t~v => v }
   
-  def bitcast_inst = "bitcast"~>ir_type~value~"to"~ir_type ^^
-                     { case t1~v~"to"~t2 =>
-                       (n: Option[String]) => new BitcastInst(n, t2, v, t1)
-                     }
-
-  def add_inst = "add"~>add_specs~>ir_type~value~","~value ^^
-                 { case t~v1~_~v2 =>
-                    (n: Option[String]) => new AddInst(n, t, v1, v2)
+  def math_inst = math_op~math_specs~ir_type~value~","~value ^^
+                 { case op~_~t~v1~_~v2 =>
+                    (n: Option[String]) => new MathInst(n, op, t, v1, v2)
                  }
-  def add_specs = opt("nuw")~opt("nsw")
+  def math_specs = opt("nuw")~opt("nsw")
+  def math_op = ("add" | "fadd" | "sub" | "fsub" | "mul" | "fmul" | "udiv" |
+                 "sdiv" | "fdiv" | "urem" | "srem" | "frem" | "shl" | "lshr" |
+                 "ashr" | "and" | "or" | "xor")
+  def cast_inst = cast_op~ir_type~value~"to"~ir_type ^^
+                  { case op~t1~v~"to"~t2 =>
+                    (n: Option[String]) => new CastInst(n, op, t2, v, t1)
+                  }
+  def cast_op = ("trunc" | "zext" | "sext" | "fptrunc" | "fpext" | "fptoui" |
+                 "fptosi" | "uitofp" | "sitofp" | "ptrtoint" | "inttoptr" |
+                 "bitcast")
 
   // the ()'s are for when this is embedded in an argument list.. generalize?
   def gep_inst = "getelementptr"~>opt("inbounds")~>(arg_list|bare_arg_list) ^^
                  { case ls => (n: Option[String]) => new GEPInst(n, ls) }
-  def sext_inst = "sext"~>typed_value~"to"~ir_type ^^
-                  { case t1~v~"to"~t2 => (n: Option[String]) => new SextInst(n, t1, v, t2) }
 }

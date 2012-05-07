@@ -37,10 +37,19 @@ case class ConstantArray(base_type: Type, size: Int, contents: List[Value],
   def ir_form = "[" + contents.map(_.full_name).mkString(", ") + "]" + junk
 }
 
-//class ConstantArray() extends Constant() {
-  // TODO constructor
-//}
+// LLVM's way of not specifying tons of 0's
+case class ConstantZeros() extends Constant(None, ZeroType()) {
+  def ir_form = "zeroinitializer"
+}
 
-// TODO constant arrays and structs
+case class ConstantNull() extends Constant(None, NullType()) {
+  def ir_form = "null"
+}
+
+case class ConstantStruct(full_ltype: Type, contents: List[Value])
+    extends Constant(None, full_ltype)
+{
+  def ir_form = "{ " + contents.map(_.full_name).mkString(", ") + " }"
+}
 
 // TODO in llvm, Function subclasses GlobalValue, which subclasses this
