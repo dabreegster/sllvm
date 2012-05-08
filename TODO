@@ -2,24 +2,29 @@
 # TODO #
 ########
 
-- make output of parsed sllvm be identical to input
+# 1) Get all input to parse
+  - scale... how to avoid reading whole file?
+
+# 2) Get all echoed output to match input
   - var-args
   - unescape constant strings
   - module stores type table (and handles recursive types)
-  - run through tests for the rest
 
-- Immutable construction (aka really clean code)
+# 3) Make it clean
   - regroup to even get rid of named_inst and laters
   - fill out User operands
   - anywhere with factories, override equals()
 
-- better graphviz output
-  - interprocedural caller/callee edges
-- wacky procedural generation visualization experiments
-
-- Build script(s)
-- Bigger tests
-- optimizations
+# 4) Make it fast
   - left factor the grammar... prevent backtracking
-  - scale... how to avoid reading whole file?
   - print progress without sacrificing perf
+  - compare to native llvm
+
+# 5) Make it pretty
+  - better graphviz output
+    - interprocedural caller/callee edges
+  - wacky procedural generation visualization experiments
+
+# 6) Make it legit
+  - Build script(s)
+  - Bigger tests
