@@ -106,6 +106,16 @@ class IcmpInst(name: Option[String], val op: String,
   def ir_form = "icmp %s %s %s, %s".format(op, val_type, val1.id, val2.id)
 }
 
+class FcmpInst(name: Option[String], val op: String,
+               val val1: Value, val val2: Value
+              ) extends Instruction(name, IntegerType(1))
+{
+  assert_eq(val1.ltype, val2.ltype)
+
+  def val_type = val1.ltype
+  def ir_form = "fcmp %s %s %s, %s".format(op, val_type, val1.id, val2.id)
+}
+
 class PHIInst(name: Option[String], ltype: Type,
               val cases: List[(Value, BasicBlock)]
              ) extends Instruction(name, ltype)

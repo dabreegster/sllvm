@@ -107,7 +107,7 @@ object Parser extends JavaTokenParsers {
                    }
                  }
   def function_name = "@" ~> llvm_id
-  def param_list = "(" ~> repsep(param_pair, ",") <~ ")"
+  def param_list = "(" ~> repsep(param_pair, ",") <~ opt(", ...") <~ ")"
   def param_attrib_ls = rep(param_attrib)
   def param_attrib = ("zeroext" | "signext" | "inreg" | "byval" | "sret" |
                       "noalias" | "nocapture" | "nest")
@@ -206,9 +206,9 @@ object Parser extends JavaTokenParsers {
                  }
   def unnamed_inst = inst ^^ { case i => i(None) }
 
-  def inst = alloca_inst | store_inst | load_inst | icmp_inst | phi_inst |
-             call_inst | indirect_call_inst | math_inst | cast_inst | gep_inst |
-             select_inst
+  def inst = alloca_inst | store_inst | load_inst | icmp_inst | fcmp_inst |
+             phi_inst | call_inst | indirect_call_inst | math_inst | cast_inst |
+             gep_inst | select_inst
   def local_id = "%" ~> llvm_id
   def local_id_lookup = local_id ^^ { case id => symbol_table(id) }
   // TODO make it slurp the "label" part too, and change preds?
@@ -220,7 +220,7 @@ object Parser extends JavaTokenParsers {
   def single_value = ir_type ~ param_attrib_ls ~ bare_value ^^ {
     case t~_~bare => make_value(t, bare)
   }
-  def const_value = ir_type ~ param_attrib_ls ~ bare_const_value ^^ {
+  def const_value = ir_type ~ param_attrib_ls ~ (bare_const_value|bare_const_inst) ^^ {
     case t~_~bare => make_const_value(t, bare)
   }
   def pair_value = ir_type ~ param_attrib_ls ~ bare_value ~ "," ~ bare_value ^^ {
@@ -230,11 +230,10 @@ object Parser extends JavaTokenParsers {
   def make_value(t: Type, pair: (String, Any)) = pair match {
     case ("local", v)   => make_local(t, v.asInstanceOf[Value])
     case ("global", g)  => make_global(t, g.asInstanceOf[String])
-    case ("gep", ls)    => make_gep(t, ls.asInstanceOf[List[Value]])
     case _              => make_const_value(t, pair)
   }
   def make_const_value(t: Type, pair: (String, Any)) = pair match {
-    case ("hex", n)     => make_const_hex_int(t, n.asInstanceOf[String])
+    case ("hex", n)     => make_const_hex_num(t, n.asInstanceOf[String])
     case ("num", n)     => make_const_num(t, n.asInstanceOf[String])
     case ("bool", b)    => make_const_bool(t, b.asInstanceOf[String])
     case ("zero", _)    => make_const_zeros(t)
@@ -242,15 +241,29 @@ object Parser extends JavaTokenParsers {
     case ("array", ls)  => make_const_array(t.asInstanceOf[ArrayType], ls.asInstanceOf[List[Value]])
     case ("struct", ls) => make_const_struct(t, ls.asInstanceOf[List[Value]])
     case ("string", s)  => make_const_string(t, s.asInstanceOf[String])
+    // constant instructions
+    case ("cast", (op, v, dst_type)) => make_cast(
+      t, op.asInstanceOf[String], v.asInstanceOf[Value], dst_type.asInstanceOf[Type]
+    )
+    case ("gep", ls)    => make_gep(t, ls.asInstanceOf[List[Value]])
   }
 
   def bare_value: Parser[(String, Any)] = bare_local | bare_global | bare_const_value |
-                                          bare_gep
+                                          bare_const_inst
   // be sure to attempt hex int before the others
-  def bare_const_value: Parser[(String, Any)] = bare_const_hex_int | bare_const_num |
+  def bare_const_value: Parser[(String, Any)] = bare_const_hex_num | bare_const_num |
                                                 bare_const_bool | bare_const_zeros |
                                                 bare_const_null | bare_const_array |
                                                 bare_const_struct | bare_const_string
+
+  // TODO refactor more with normal instruction form
+  def bare_const_inst = bare_cast_inst | bare_gep_inst
+  // TODO ^ select, icmp, binary ops of all sorts... listed in the Lang Ref
+  def bare_cast_inst = cast_op~"("~single_value~"to"~ir_type~")" ^^
+                  { case op~"("~v~"to"~t~")" => ("cast", (op, v, t)) }
+  def bare_gep_inst = "getelementptr"~>opt("inbounds")~>arg_list ^^
+                  { case ls => ("gep", ls) }
+
 
   ///// actual constructors
   def make_local(t: Type, v: Value): Value = {
@@ -263,15 +276,21 @@ object Parser extends JavaTokenParsers {
     assert_eq(gep.ltype, t)
     return gep
   }
-  // TODO, yes, it throws away the number, but for now...
-  def make_const_hex_int(t: Type, n: String) = t match {
-    case IntegerType(bw) => ConstantInt(
-      java.lang.Long.parseLong(n.drop(2), 16).toInt, bw
-    )
-    case FloatType()  => ConstantFP(java.lang.Long.parseLong(n.drop(2), 16).toDouble, t)
-    case DoubleType() => ConstantFP(java.lang.Long.parseLong(n.drop(2), 16).toDouble, t)
-    // TODO we could even parse more specifically!
-    case _ => throw new Exception("weird type " + t + " on int " + n)
+  def make_cast(t: Type, op: String, v: Value, dst_type: Type): Value = {
+    val cast = new CastInst(None, op, dst_type, v)
+    assert_eq(cast.ltype, t)
+    return cast
+  }
+  def make_const_hex_num(t: Type, n: String): Constant = {
+    val exact = BigInt(n.drop(2), 16)
+    return t match {
+      // TODO, yes, it throws away the number, but for now...
+      case IntegerType(bw) => ConstantInt(exact.toInt, bw)
+      case FloatType()  => ConstantFP(exact.toDouble, t)
+      case DoubleType() => ConstantFP(exact.toDouble, t)
+      // TODO we could even parse more specifically!
+      case _ => throw new Exception("weird type " + t + " on int " + n)
+    }
   }
   def make_const_num(t: Type, n: String) = t match {
     case IntegerType(bw) => ConstantInt(n.toInt, bw)
@@ -293,7 +312,7 @@ object Parser extends JavaTokenParsers {
   ////////// regex matchers
   def bare_local = local_id_lookup ^^ { case l => ("local", l) }
   def bare_global = global_id ^^ { case g => ("global", g) }
-  def bare_const_hex_int = """0x[0-9A-F]+""".r ^^ { case n => ("hex", n) }
+  def bare_const_hex_num = """0x[0-9A-F]+""".r ^^ { case n => ("hex", n) }
   def bare_const_num = floatingPointNumber ^^ { case n => ("num", n) }
   def bare_const_bool = ("true" | "false") ^^ { case b => ("bool", b) }
   def bare_const_zeros = "zeroinitializer" ^^ { case z => ("zero", z) }
@@ -301,13 +320,13 @@ object Parser extends JavaTokenParsers {
   def bare_const_array = "[" ~> repsep(single_value, ",") <~ "]" ^^ { case ls => ("array", ls) }
   def bare_const_struct = "{" ~> repsep(single_value, ",") <~ "}" ^^ { case ls => ("struct", ls) }
   def bare_const_string = "c\"" ~> """[^"]*""".r <~ "\"" ^^ { case s => ("string", s) }
-  def bare_gep = "getelementptr"~>opt("inbounds")~>arg_list ^^ { case ls => ("gep", ls) }
 
   ///////////////////////////////////////////////////////////////////
 
   // and now the bestiary
-  def alloca_inst = "alloca" ~> ir_type ~ alignment ^^
-                    { case t~junk => (n: Option[String]) => new AllocaInst(n, t.ptr_to, junk)
+  def alloca_inst = "alloca" ~> ir_type ~ opt(","~single_value) ~ alignment ^^
+                    // TODO the weird second optional arg says how many elements
+                    { case t~_~junk => (n: Option[String]) => new AllocaInst(n, t.ptr_to, junk)
                     }
   def alignment   = opt(", align" ~ wholeNumber) ^^ {
                       case Some(text~n) => text + " " + n
@@ -326,6 +345,14 @@ object Parser extends JavaTokenParsers {
                     }
   def icmp_op     = ("eq" | "ne" | "ugt" | "uge" | "ult" | "ule" |
                      "sgt" | "sge" | "slt" | "sle")
+  def fcmp_inst   = "fcmp" ~> fcmp_op ~ pair_value ^^
+                    { case op~vals => (n: Option[String]) => new FcmpInst(
+                        n, op, vals._1, vals._2
+                      )
+                    }
+  def fcmp_op     = ("false" | "oeq" | "ogt" | "oge" | "olt" | "ole" |"one" |
+                     "ord" | "ueq" | "ugt" | "uge" | "ult" | "ule" | "une" |
+                     "uno" | "true")
   def phi_inst    = "phi" ~> ir_type ~ repsep(phi_case, ",") ^^
                     { case t~cases => (n: Option[String]) => new PHIInst(
                         // cases are a list of ((string, any), bb)
@@ -353,7 +380,7 @@ object Parser extends JavaTokenParsers {
                       n, op, vals._1, vals._2
                     )
                  }
-  def math_specs = opt("nuw")~opt("nsw")
+  def math_specs = opt("nuw")~opt("nsw")~opt("exact") // TODO these change per op
   def math_op = ("add" | "fadd" | "sub" | "fsub" | "mul" | "fmul" | "udiv" |
                  "sdiv" | "fdiv" | "urem" | "srem" | "frem" | "shl" | "lshr" |
                  "ashr" | "and" | "or" | "xor")
