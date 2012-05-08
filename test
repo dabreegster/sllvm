@@ -1,11 +1,15 @@
 #!/bin/sh
 
-INPUT=examples/oggenc.s
+INPUT=examples/bzip.s
+
 RUN=llvm.EchoTest
 #RUN=llvm.SplitAtCall
 #RUN=llvm.VizTest
 
+#MEMORY="-J-Xmx1g"   # never more than 1GB
+MEMORY=""
+
 ./build &&
-scala -cp .build $RUN $INPUT
-#scala -cp .build $RUN $INPUT > out
+scala -cp .build $MEMORY $RUN $INPUT
+#scala -cp .build $MEMORY $RUN $INPUT > out
 #meld $INPUT out

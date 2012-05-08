@@ -12,27 +12,47 @@ import java.io.FileReader
 object Parser extends JavaTokenParsers {
   // TODO deal with the named instruction nonsense
 
+  // parse -> parse_type -> parse_global -> parse_fxn
+  def bail(err: Any) = {
+    print("\n")
+    throw new Exception("Parsing issue: " + err)
+  }
+
   def parse(fn: String): Module = {
-    val in = new FileReader(fn)
-    print("Parsing module header (globals and types)...")
-    // TODO do the globals/types incrementally too, to make gcc.s work
-    return parse(module_prelim, in) match {
-      case Success((globals, junk), rest) => {
-        parse_fxn(globals, junk, Nil, rest)
-      }
-      case err => { print("\n"); throw new Exception("Parsing issue: " + err) }
+    print("Initializing parser...")
+    return parse(module_prelim, new FileReader(fn)) match {
+      case Success(junk, rest) => parse_type(junk, rest)
+      case err => bail(err)
+    }
+  }
+  
+  def parse_type(junk: List[String], in: Input): Module = {
+    print("%-80s".format("\rParsing types... at line " + in.pos.line))
+    return parse(type_decl, in) match {
+      case Success(t, rest) => parse_type(junk, rest)
+      // TODO does failure always mean move on?
+      case Failure(_, _) => parse_global(junk, Nil, in)
+      case err => bail(err)
     }
   }
 
-  def parse_fxn(globals: List[GlobalVariable], junk: List[String],
+  def parse_global(junk: List[String], globals: List[GlobalVariable], in: Input): Module = {
+    print("%-80s".format("\rParsing globals... at line " + in.pos.line))
+    return parse(global_def | global_decl, in) match {
+      case Success(g, rest) => parse_global(junk, g :: globals, rest)
+      // TODO does failure always mean move on?
+      case Failure(_, _) => parse_fxn(junk, globals, Nil, in)
+      case err => bail(err)
+    }
+  }
+
+  def parse_fxn(junk: List[String], globals: List[GlobalVariable],
                 functions: List[(Module) => Function], in: Input): Module =
   {
     // TODO print total file length or so
     print("%-80s".format("\rParsing functions... at line " + in.pos.line))
     return parse(function | fxn_declare, in) match {
-      case Success(f, rest) => {
-        parse_fxn(globals, junk, f :: functions, rest)
-      }
+      case Success(f, rest) => parse_fxn(junk, globals, f :: functions, rest)
       // TODO in.atEnd is never true, so have to do this nonsense!
       // TODO losing some of the helpful bits of the error message somehow!
       case Failure(msg, rest) => if (rest.atEnd) {
@@ -77,9 +97,7 @@ object Parser extends JavaTokenParsers {
     }
   }
 
-  def module_prelim = comment ~ rep(target) ~ rep(type_decl) ~
-                      rep(global_def | global_decl) ^^
-                      { case j1~j2~_~globals => (globals, j1 :: j2) }
+  def module_prelim = comment ~ rep(target) ^^ { case j1~j2 => j1 :: j2 }
   def comment = """;.*""".r
   def target  = """target.*""".r
   def llvm_id = ("""[a-zA-Z$._][a-zA-Z$._0-9]*""".r | wholeNumber)

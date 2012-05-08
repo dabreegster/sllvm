@@ -20,3 +20,5 @@
 - Build script(s)
 - Bigger tests
 - optimizations
+  - left factor the grammar... prevent backtracking
+  - scale... how to avoid reading whole file?
