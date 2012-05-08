@@ -84,6 +84,7 @@ object Parser extends JavaTokenParsers {
 
   def type_decl = local_id ~ "=" ~ lazy_ir_type ^^
                   { case n~"="~t => {
+                      t.name = Some(n)
                       type_table(n) = t
                       t
                     }
@@ -105,7 +106,7 @@ object Parser extends JavaTokenParsers {
                      f
                    }
                  }
-  def function_name = "@" ~> ident
+  def function_name = "@" ~> llvm_id
   def param_list = "(" ~> repsep(param_pair, ",") <~ ")"
   def param_attrib_ls = rep(param_attrib)
   def param_attrib = ("zeroext" | "signext" | "inreg" | "byval" | "sret" |
@@ -267,13 +268,15 @@ object Parser extends JavaTokenParsers {
     case IntegerType(bw) => ConstantInt(
       java.lang.Long.parseLong(n.drop(2), 16).toInt, bw
     )
+    case FloatType()  => ConstantFP(java.lang.Long.parseLong(n.drop(2), 16).toDouble, t)
+    case DoubleType() => ConstantFP(java.lang.Long.parseLong(n.drop(2), 16).toDouble, t)
     // TODO we could even parse more specifically!
-    case _ => throw new Exception("weird type " + t + " on an int")
+    case _ => throw new Exception("weird type " + t + " on int " + n)
   }
   def make_const_num(t: Type, n: String) = t match {
     case IntegerType(bw) => ConstantInt(n.toInt, bw)
-    case FloatType()     => ConstantFP(n.toDouble)
-    case DoubleType()    => ConstantFP(n.toDouble)
+    case FloatType()     => ConstantFP(n.toDouble, t)
+    case DoubleType()    => ConstantFP(n.toDouble, t)
   }
   def make_const_bool(t: Type, b: String) = t match {
     case IntegerType(bw) => ConstantInt(
@@ -339,7 +342,7 @@ object Parser extends JavaTokenParsers {
                             function_post_attribs ^^
               { case t~_~v~a => (n: Option[String]) => new IndirectCallInst(n, v, t, a) }
   // mostly shows up for var-arg stuff. TODO refactor with new fxn_type
-  def function_sig = "(" ~> repsep(ir_type, ",") <~ opt(", ...") <~ ")" <~
+  def function_sig = "(" ~> repsep(ir_type~param_attrib_ls, ",") <~ opt(", ...") <~ ")" <~
                      opt("*") <~ function_post_attribs
   def bare_arg_list = repsep(single_value, ",")
   def arg_list    = "(" ~> bare_arg_list <~ ")"

@@ -13,8 +13,7 @@ case class ConstantInt(val n: Int, bw: Int) extends Constant(None, IntegerType(b
   override def full_name = ltype + " " + n
 }
 
-case class ConstantFP(val n: Double) extends Constant(None, DoubleType()) {
-  // TODO or FloatType?
+case class ConstantFP(val n: Double, t: Type) extends Constant(None, t) {
   // TODO ever have a name?
 
   def ir_form = n.toString

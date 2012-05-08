@@ -4,8 +4,8 @@
 
 - make output of parsed sllvm be identical to input
   - var-args
-  - intrinsics
   - unescape constant strings
+  - module stores type table (and handles recursive types)
   - run through tests for the rest
 
 - Immutable construction (aka really clean code)

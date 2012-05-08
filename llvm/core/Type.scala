@@ -6,6 +6,8 @@ import llvm.Util._
 // TODO are case classes even a good idea?
 
 class Type() {
+  var name: Option[String] = None
+
   // TODO or make them cast to PointerType?
   def deref: Type = throw new Exception("Can't dereference a primitive type " + this)
   def ptr_to: PointerType = new PointerType(this, 1)
@@ -34,7 +36,7 @@ case class ArrayType(base_factory: Later[Type], size: Int) extends Type() {
     case x: ArrayType => (base == x.base && size == x.size)
     case _ => false
   }
-  override def toString = "array[" + base + " ](" + size + ")"
+  override def toString = "[" + base + " x " + size + "]"
 
   // TODO dubious
   def ptr_to_member = base.ptr_to
@@ -62,7 +64,12 @@ case class StructType(fields_factory: List[Later[Type]]) extends Type() {
     case _ => false
   }
 
-  override def toString = "type { " + fields.map(_.toString).mkString(", ") + " }"
+  // TODO recursive types break things, this is a temporary workaround
+  override def toString = name match {
+    case Some(n) => "%" + n   // TODO always a local?
+    case None    => "type { " + fields.map(_.toString).mkString(", ") + " }"
+  }
+  //override def toString = "type { " + fields.map(_.toString).mkString(", ") + " }"
 }
 case class FunctionType(ret_factory: Later[Type], params_factory: List[Later[Type]],
                         var_arg: Boolean) extends Type()
