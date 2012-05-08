@@ -2,10 +2,6 @@
 # TODO #
 ########
 
-- try incremental parsing of each a module's things
-  - adds scalability for huge files
-  - could print progress!
-
 - make output of parsed sllvm be identical to input
   - var-args
   - unescape constant strings
@@ -23,3 +19,4 @@
 
 - Build script(s)
 - Bigger tests
+- optimizations

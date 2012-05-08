@@ -12,9 +12,38 @@ import java.io.FileReader
 object Parser extends JavaTokenParsers {
   // TODO deal with the named instruction nonsense
 
-  def parse(fn: String): Module = parseAll(module, new FileReader(fn)) match {
-    case Success(mod, rest) => mod
-    case err                => throw new Exception("Parsing issue: " + err)
+  def parse(fn: String): Module = {
+    val in = new FileReader(fn)
+    print("Parsing module header (globals and types)...")
+    // TODO do the globals/types incrementally too, to make gcc.s work
+    return parse(module_prelim, in) match {
+      case Success((globals, junk), rest) => {
+        parse_fxn(globals, junk, Nil, rest)
+      }
+      case err => { print("\n"); throw new Exception("Parsing issue: " + err) }
+    }
+  }
+
+  def parse_fxn(globals: List[GlobalVariable], junk: List[String],
+                functions: List[(Module) => Function], in: Input): Module =
+  {
+    // TODO print total file length or so
+    print("%-80s".format("\rParsing functions... at line " + in.pos.line))
+    return parse(function | fxn_declare, in) match {
+      case Success(f, rest) => {
+        parse_fxn(globals, junk, f :: functions, rest)
+      }
+      // TODO in.atEnd is never true, so have to do this nonsense!
+      // TODO losing some of the helpful bits of the error message somehow!
+      case Failure(msg, rest) => if (rest.atEnd) {
+                                   print("\n")
+                                   new Module(functions, globals, junk)
+                                 } else {
+                                   print("\n")
+                                   throw new Exception("Parsing issue: " + msg)
+                                 }
+      case err => { print("\n"); throw new Exception("Parsing issue: " + err) }
+    }
   }
 
   // for local values
@@ -48,12 +77,9 @@ object Parser extends JavaTokenParsers {
     }
   }
 
-  def module = comment ~ rep(target) ~ rep(type_decl) ~ rep(global_def | global_decl) ~
-               rep(function | fxn_declare) ^^
-               { case j1~j2~_~globals~fxns => new Module(
-                   fxns, globals, j1 :: j2
-                 )
-               }
+  def module_prelim = comment ~ rep(target) ~ rep(type_decl) ~
+                      rep(global_def | global_decl) ^^
+                      { case j1~j2~_~globals => (globals, j1 :: j2) }
   def comment = """;.*""".r
   def target  = """target.*""".r
   def llvm_id = ("""[a-zA-Z$._][a-zA-Z$._0-9]*""".r | wholeNumber)
