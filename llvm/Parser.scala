@@ -11,6 +11,7 @@ import java.io.FileReader
 // based off http://llvm.org/docs/LangRef.html
 object Parser extends JavaTokenParsers {
   // TODO deal with the named instruction nonsense
+  // TODO look at llvm grammar and see how close to it we came ;)
 
   def parse = atonce_parse _
   // Incremental prints progress and is obnoxiously slower
@@ -23,7 +24,7 @@ object Parser extends JavaTokenParsers {
   }
 
   def module = comment ~ rep(target) ~ rep(type_decl) ~ rep(global_def | global_decl) ~
-               rep(function | fxn_declare) ^^
+               rep(function | fxn_declare) <~ rep(metadata) ^^
                { case j1~j2~_~globals~fxns => new Module(
                    fxns, globals, j1 :: j2
                  )
@@ -76,6 +77,7 @@ object Parser extends JavaTokenParsers {
                                    print("\n")
                                    new Module(functions, globals, junk)
                                  } else {
+                                   // TODO read metadata!
                                    print("\n")
                                    throw new Exception("Parsing issue: " + msg)
                                  }
@@ -116,8 +118,10 @@ object Parser extends JavaTokenParsers {
 
   def module_prelim = comment ~ rep(target) ^^ { case j1~j2 => j1 :: j2 }
   def comment = """;.*""".r
+  def metadata = """!.*""".r
   def target  = """target.*""".r
   def llvm_id = ("""[a-zA-Z$._][a-zA-Z$._0-9]*""".r | wholeNumber)
+  def string_literal = "\"" ~> """[^"]*""".r <~ "\""
   // TODO this throws away params
   def fxn_declare = "declare"~>param_attrib_ls~>ir_type~function_name~function_sig ^^
                      { case t~n~_ => (m: Module) => new Function(
@@ -268,8 +272,8 @@ object Parser extends JavaTokenParsers {
   def unnamed_inst = inst ^^ { case i => i(None) }
 
   def inst = alloca_inst | store_inst | load_inst | icmp_inst | fcmp_inst |
-             phi_inst | call_inst | indirect_call_inst | math_inst | cast_inst |
-             gep_inst | select_inst
+             phi_inst | call_inst | indirect_call_inst | asm_call_inst | math_inst |
+             cast_inst | gep_inst | select_inst
   def local_id = "%" ~> llvm_id
   def local_id_lookup = local_id ^^ { case id => symbol_table(id) }
   // TODO make it slurp the "label" part too, and change preds?
@@ -380,7 +384,7 @@ object Parser extends JavaTokenParsers {
   def bare_const_null = "null" ^^ { case n => ("null", n) }
   def bare_const_array = "[" ~> repsep(single_value, ",") <~ "]" ^^ { case ls => ("array", ls) }
   def bare_const_struct = "{" ~> repsep(single_value, ",") <~ "}" ^^ { case ls => ("struct", ls) }
-  def bare_const_string = "c\"" ~> """[^"]*""".r <~ "\"" ^^ { case s => ("string", s) }
+  def bare_const_string = "c" ~> string_literal ^^ { case s => ("string", s) }
 
   ///////////////////////////////////////////////////////////////////
 
@@ -429,6 +433,12 @@ object Parser extends JavaTokenParsers {
                             opt(function_sig) ~ local_id_lookup ~ arg_list <~
                             function_post_attribs ^^
               { case t~_~v~a => (n: Option[String]) => new IndirectCallInst(n, v, t, a) }
+  def asm_call_inst  = "call" ~> function_post_attribs ~> param_attrib_ls ~> ir_type ~
+                    opt(function_sig) ~ asm_blob ~ arg_list <~
+                    function_post_attribs <~ opt(","~metadata) ^^
+                    { case t~_~c~a => (n: Option[String]) => new AsmCallInst(n, c, t, a) }
+  def asm_blob = "asm"~>opt("sideeffect")~>string_literal~","~string_literal ^^
+                 { case s1~","~s2 => (s1, s2) }
   // mostly shows up for var-arg stuff. TODO refactor with new fxn_type
   def function_sig = "(" ~> repsep(ir_type~param_attrib_ls, ",") <~ opt(", ...") <~ ")" <~
                      opt("*") <~ function_post_attribs

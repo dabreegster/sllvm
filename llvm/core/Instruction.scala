@@ -149,6 +149,14 @@ class IndirectCallInst(name: Option[String], call: Value, ltype: Type,
                 args.map(_.full_name).mkString(", ") + ")"
 }
 
+class AsmCallInst(name: Option[String], call: (String, String), ltype: Type,
+                  val args: List[Value]
+                 ) extends TerminatorInst(ltype, name, Set())
+{
+  def ir_form = "call \"" + call._1 + "\", \"" + call._2 + "\"(" +
+                args.map(_.full_name).mkString(", ") + ")"
+}
+
 // The many instances are boilerplate and boring. Could make op an enum at
 // least?
 class MathInst(name: Option[String], val op: String,
