@@ -12,13 +12,30 @@ import java.io.FileReader
 object Parser extends JavaTokenParsers {
   // TODO deal with the named instruction nonsense
 
-  // parse -> parse_type -> parse_global -> parse_fxn
+  def parse = atonce_parse _
+  // Incremental prints progress and is obnoxiously slower
+  //def parse = inc_parse _
+
+  // straightforward parsing
+  def atonce_parse(fn: String): Module = parseAll(module, new FileReader(fn)) match {
+    case Success(mod, rest) => mod
+    case err                => throw new Exception("Parsing issue: " + err)
+  }
+
+  def module = comment ~ rep(target) ~ rep(type_decl) ~ rep(global_def | global_decl) ~
+               rep(function | fxn_declare) ^^
+               { case j1~j2~_~globals~fxns => new Module(
+                   fxns, globals, j1 :: j2
+                 )
+               }
+
+  // incremental parsing: inc_parse -> parse_type -> parse_global -> parse_fxn
   def bail(err: Any) = {
     print("\n")
     throw new Exception("Parsing issue: " + err)
   }
 
-  def parse(fn: String): Module = {
+  def inc_parse(fn: String): Module = {
     print("Initializing parser...")
     return parse(module_prelim, new FileReader(fn)) match {
       case Success(junk, rest) => parse_type(junk, rest)
@@ -27,7 +44,7 @@ object Parser extends JavaTokenParsers {
   }
   
   def parse_type(junk: List[String], in: Input): Module = {
-    print("%-80s".format("\rParsing types... at line " + in.pos.line))
+    print("\rParsing types... at line " + in.pos.line)
     return parse(type_decl, in) match {
       case Success(t, rest) => parse_type(junk, rest)
       // TODO does failure always mean move on?
@@ -37,7 +54,7 @@ object Parser extends JavaTokenParsers {
   }
 
   def parse_global(junk: List[String], globals: List[GlobalVariable], in: Input): Module = {
-    print("%-80s".format("\rParsing globals... at line " + in.pos.line))
+    print("\rParsing globals... at line " + in.pos.line)
     return parse(global_def | global_decl, in) match {
       case Success(g, rest) => parse_global(junk, g :: globals, rest)
       // TODO does failure always mean move on?
@@ -50,7 +67,7 @@ object Parser extends JavaTokenParsers {
                 functions: List[(Module) => Function], in: Input): Module =
   {
     // TODO print total file length or so
-    print("%-80s".format("\rParsing functions... at line " + in.pos.line))
+    print("\rParsing functions... at line " + in.pos.line)
     return parse(function | fxn_declare, in) match {
       case Success(f, rest) => parse_fxn(junk, globals, f :: functions, rest)
       // TODO in.atEnd is never true, so have to do this nonsense!

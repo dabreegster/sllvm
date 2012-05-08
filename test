@@ -1,6 +1,6 @@
 #!/bin/sh
 
-INPUT=examples/bzip.s
+INPUT=examples/oggenc.s
 
 RUN=llvm.EchoTest
 #RUN=llvm.SplitAtCall

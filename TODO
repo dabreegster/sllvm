@@ -22,3 +22,4 @@
 - optimizations
   - left factor the grammar... prevent backtracking
   - scale... how to avoid reading whole file?
+  - print progress without sacrificing perf
