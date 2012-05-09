@@ -11,4 +11,5 @@ class Module(val make_functions: List[(Module) => Function],
                 (if (globals.isEmpty) "" else "\n\n") +
                 functions.map(_.ir_form).mkString("\n")
   def graphviz = functions.map(_.graphviz).mkString("\n") // TODO calls?
+  def root = fxn_table("main")
 }

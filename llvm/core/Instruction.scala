@@ -2,7 +2,7 @@ package llvm.core
 
 import llvm.Util._
 
-// TODO case classes?
+// TODO case classes? or these extractors?
 // TODO apply and unapply could almost parse/unparse...
   // *** extractors.
 
@@ -29,9 +29,12 @@ abstract class TerminatorInst(ltype: Type, name: Option[String],
   // then normal/terminator versions of call could be possible
 }
 
-class ReturnInst(ret_val: Value) extends TerminatorInst(ret_val.ltype, None, Set())
+class ReturnInst(val ret_val: Value) extends TerminatorInst(ret_val.ltype, None, Set())
 {
   def ir_form = "ret " + ret_val.full_name
+}
+object ReturnInst {
+  def unapply(i: ReturnInst) = Some(i.ret_val)
 }
 
 class VoidReturnInst() extends TerminatorInst(VoidType(), None, Set()) {
@@ -44,6 +47,9 @@ class UnconditionalBranchInst(val target: BasicBlock)
       extends TerminatorInst(VoidType(), None, Set(target))
 {
   def ir_form = "br label " + target.id
+}
+object UnconditionalBranchInst {
+  def unapply(i: UnconditionalBranchInst) = Some(i.target)
 }
 
 class BranchInst(val test_val: Value, val true_target: BasicBlock,
@@ -83,10 +89,13 @@ class StoreInst(name: Option[String], val src: Value,
                 val dst: Value, junk: String = "")
       extends Instruction(name, VoidType())
 {
-  // TODO make sure the dst fits in the src's ptr?
+  assert_eq(src.ltype.ptr_to, dst.ltype)
 
   def ir_form = "store %s, %s".format(src.full_name, dst.full_name) + junk
   override def gv_form = "store %s, %s".format(src.full_name, dst.full_name)
+}
+object StoreInst {
+  def unapply(i: StoreInst) = Some(i.src, i.dst)
 }
 
 class LoadInst(name: Option[String], val src: Value, junk: String = "")
@@ -94,6 +103,9 @@ class LoadInst(name: Option[String], val src: Value, junk: String = "")
 {
   def ir_form = "load " + src.full_name + junk
   override def gv_form = name.get + " = load " + src.full_name
+}
+object LoadInst {
+  def unapply(i: LoadInst) = Some(i.src)
 }
 
 class IcmpInst(name: Option[String], val op: String,
@@ -126,6 +138,9 @@ class PHIInst(name: Option[String], ltype: Type,
     c => "[ %s, %s ]".format(c._1.id, c._2.id)
   ).mkString(", ")
 }
+object PHIInst {
+  def unapply(i: PHIInst) = Some(i.cases)
+}
 
 class CallInst(name: Option[String], call: String, ltype: Type,
                val args: List[Value]
@@ -140,13 +155,19 @@ class CallInst(name: Option[String], call: String, ltype: Type,
   def ir_form = "call " + callee.full_name + "(" +
                 args.map(_.full_name).mkString(", ") + ")"
 }
+object CallInst {
+  def unapply(i: CallInst) = Some(i.callee, i.args)
+}
 
-class IndirectCallInst(name: Option[String], call: Value, ltype: Type,
+class IndirectCallInst(name: Option[String], val call: Value, ltype: Type,
                        val args: List[Value]
                       ) extends TerminatorInst(ltype, name, Set())
 {
   def ir_form = "call " + call.id + "(" +
                 args.map(_.full_name).mkString(", ") + ")"
+}
+object IndirectCallInst {
+  def unapply(i: IndirectCallInst) = Some(i.call, i.args)
 }
 
 class AsmCallInst(name: Option[String], call: (String, String), ltype: Type,

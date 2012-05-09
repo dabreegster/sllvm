@@ -41,4 +41,5 @@ class Function(name: Option[String], val ret_type: Type,
                    "  subgraph cluster_%s {\n    label=\"%s\";\n%s  }\n".format(
                     name.get, this, blocks.map(bb => bb.outline_graphviz).mkString("")
                   )
+  def instructions = blocks.flatMap(b => b.instructions)
 }
