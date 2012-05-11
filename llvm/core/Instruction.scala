@@ -18,6 +18,7 @@ abstract class Instruction(name: Option[String], ltype: Type) extends User(name,
   def function = parent.parent
   def module = function.parent
   def gv_form = toString
+  override def uniq_name = function.name.get + "/" + name.get
 }
 
 abstract class TerminatorInst(ltype: Type, name: Option[String],
@@ -90,6 +91,7 @@ class StoreInst(name: Option[String], val src: Value,
       extends Instruction(name, VoidType())
 {
   assert_eq(src.ltype.ptr_to, dst.ltype)
+  src.add_use(this)
 
   def ir_form = "store %s, %s".format(src.full_name, dst.full_name) + junk
   override def gv_form = "store %s, %s".format(src.full_name, dst.full_name)

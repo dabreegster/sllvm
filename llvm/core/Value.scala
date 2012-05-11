@@ -1,11 +1,17 @@
 package llvm.core
 
+import scala.collection.mutable.MutableList
+
 abstract class Value(val name: Option[String], val ltype: Type) {
-  var users: List[User] = Nil
+  val users = new MutableList[User]()
+
+  def add_use(u: User) = {
+    users += u
+  }
 
   // TODO do we want distinction between printing just name and whole line?
 
-  // TODO the difference between these 3 is slightly annoying
+  // TODO the difference between these is slightly annoying
   def id = name match {
     // case 1 is normal
     case Some(n) => "%" + n
@@ -18,4 +24,6 @@ abstract class Value(val name: Option[String], val ltype: Type) {
     case Some(n) => id + " = " + ir_form
     case None    => ir_form
   }
+  // inclues the parent function
+  def uniq_name = name.get
 }

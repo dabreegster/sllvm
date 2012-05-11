@@ -11,6 +11,14 @@ class Type() {
   // TODO or make them cast to PointerType?
   def deref: Type = throw new Exception("Can't dereference a primitive type " + this)
   def ptr_to: PointerType = new PointerType(this, 1)
+  def ptrs_to(lvls: Int): Type = if (lvls == 0)
+                                   this
+                                 else
+                                   ptr_to.ptrs_to(lvls - 1)
+  def derefs(lvls: Int): Type = if (lvls == 0)
+                                  this
+                                else
+                                  deref.derefs(lvls - 1)
 }
 
 case class IntegerType(bitwidth: Int) extends Type() {
