@@ -13,6 +13,16 @@ object Util {
   // Pretty debugging
   // TODO implicitly take ir_form of the offending instruction?
   def assert_eq(a: Any, b: Any) = assert(a == b, a + " != " + b)
+  private var indent_log = 0
+  def log_push = { indent_log += 1 }
+  def log_pop =  { indent_log -= 1 }
+  def indent = "  " * indent_log
+  def log(msg: String) = println(indent + msg)
+  def log_indent(thunk: => Unit): Unit = {
+    log_push
+    thunk
+    log_pop
+  }
 
   // Interactive graphvizualization
   def graphviz(contents: String) = "digraph sllvm {\n" + contents + "}"

@@ -11,6 +11,7 @@ class Type() {
   // TODO or make them cast to PointerType?
   def deref: Type = throw new Exception("Can't dereference a primitive type " + this)
   def ptr_to: PointerType = new PointerType(this, 1)
+  def ptr_level = 0 // TODO this is a bit of a hack in the use case, maybe not a good idea
   def ptrs_to(lvls: Int): Type = if (lvls == 0)
                                    this
                                  else
@@ -51,6 +52,7 @@ case class ArrayType(base_factory: Later[Type], size: Int) extends Type() {
 }
 case class PointerType(base_factory: Later[Type], levels: Int) extends Type() {
   lazy val base = base_factory()
+  override def ptr_level = levels
 
   override def toString = base + ("*" * levels)
   override def equals(other: Any) = other match {

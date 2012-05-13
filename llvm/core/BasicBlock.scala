@@ -14,7 +14,7 @@ class BasicBlock(name: Option[String]) extends Value(name, LabelType()) {
     inst_ls = inst
     term_inst = term
     preds = pred_ls
-    instructions.foreach(i => i.parent = this)
+    instructions.foreach(i => i.set_parent(this))
     return this
   }
 

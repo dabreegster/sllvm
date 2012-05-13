@@ -15,6 +15,10 @@ abstract class Instruction(name: Option[String], ltype: Type) extends User(name,
   // TODO constructor
   var parent: BasicBlock = null
 
+  def set_parent(bb: BasicBlock) = {
+    parent = bb
+  }
+
   def function = parent.parent
   def module = function.parent
   def gv_form = toString
@@ -154,6 +158,14 @@ class CallInst(name: Option[String], call: String, ltype: Type,
     f
   }
 
+  override def set_parent(bb: BasicBlock) = {
+    args.foreach(a => a match {
+      case i: Instruction => i.set_parent(bb)
+      case _ =>
+    })
+    super.set_parent(bb)
+  }
+
   def ir_form = "call " + callee.full_name + "(" +
                 args.map(_.full_name).mkString(", ") + ")"
 }
@@ -165,6 +177,15 @@ class IndirectCallInst(name: Option[String], val call: Value, ltype: Type,
                        val args: List[Value]
                       ) extends TerminatorInst(ltype, name, Set())
 {
+  // TODO how to share this better?
+  override def set_parent(bb: BasicBlock) = {
+    args.foreach(a => a match {
+      case i: Instruction => i.set_parent(bb)
+      case _ =>
+    })
+    super.set_parent(bb)
+  }
+
   def ir_form = "call " + call.id + "(" +
                 args.map(_.full_name).mkString(", ") + ")"
 }
@@ -176,6 +197,15 @@ class AsmCallInst(name: Option[String], call: (String, String), ltype: Type,
                   val args: List[Value]
                  ) extends TerminatorInst(ltype, name, Set())
 {
+  // TODO how to share this better?
+  override def set_parent(bb: BasicBlock) = {
+    args.foreach(a => a match {
+      case i: Instruction => i.set_parent(bb)
+      case _ =>
+    })
+    super.set_parent(bb)
+  }
+
   def ir_form = "call \"" + call._1 + "\", \"" + call._2 + "\"(" +
                 args.map(_.full_name).mkString(", ") + ")"
 }
@@ -193,17 +223,22 @@ class MathInst(name: Option[String], val op: String,
 }
 
 // Likewise, many boring instances
-class CastInst(name: Option[String], op: String, target_type: Type,
-               value: Value)
+class CastInst(name: Option[String], op: String, val target_type: Type,
+               val value: Value)
     extends Instruction(name, target_type)
 {
   def ir_form = op + " " + value.full_name + " to " + ltype
+}
+object CastInst {
+  def unapply(i: CastInst) = Some(i.value, i.target_type)
 }
 
 class GEPInst(name: Option[String], val fields: List[Value]) extends Instruction(
   name, GEPInst.chase_indexed_type(fields)
 ) {
   // TODO first is a pointer, rest are ints?
+  def base = fields.head
+  def indices = fields.tail
 
   def ir_form = "getelementptr " + fields.map(_.toString).mkString(",")
 }
@@ -227,6 +262,8 @@ object GEPInst {
 
     return cur.ptr_to
   }
+
+  def unapply(i: GEPInst) = Some(i.base, i.indices)
 }
 
 class SelectInst(name: Option[String], select_val: Value, v1: Value, v2: Value)
