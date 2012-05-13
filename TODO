@@ -13,6 +13,7 @@
 # 3) Make it clean
   - regroup to even get rid of named_inst and laters
   - fill out User operands
+  - all instructions propagate parent BB to instruction children
   - anywhere with factories, override equals()
 
 # 4) Make it fast

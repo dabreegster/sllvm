@@ -19,6 +19,14 @@ abstract class Instruction(name: Option[String], ltype: Type) extends User(name,
     parent = bb
   }
 
+  protected def propagate_parent(bb: BasicBlock, values: Traversable[Value]) = {
+    values.foreach(v => v match {
+      case i: Instruction => i.set_parent(bb)
+      case _ =>
+    })
+    parent = bb
+  }
+
   def function = parent.parent
   def module = function.parent
   def gv_form = toString
@@ -36,6 +44,8 @@ abstract class TerminatorInst(ltype: Type, name: Option[String],
 
 class ReturnInst(val ret_val: Value) extends TerminatorInst(ret_val.ltype, None, Set())
 {
+  override def set_parent(bb: BasicBlock) = propagate_parent(bb, List(ret_val))
+
   def ir_form = "ret " + ret_val.full_name
 }
 object ReturnInst {
@@ -96,6 +106,7 @@ class StoreInst(name: Option[String], val src: Value,
 {
   assert_eq(src.ltype.ptr_to, dst.ltype)
   src.add_use(this)
+  override def set_parent(bb: BasicBlock) = propagate_parent(bb, List(src, dst))
 
   def ir_form = "store %s, %s".format(src.full_name, dst.full_name) + junk
   override def gv_form = "store %s, %s".format(src.full_name, dst.full_name)
@@ -158,13 +169,7 @@ class CallInst(name: Option[String], call: String, ltype: Type,
     f
   }
 
-  override def set_parent(bb: BasicBlock) = {
-    args.foreach(a => a match {
-      case i: Instruction => i.set_parent(bb)
-      case _ =>
-    })
-    super.set_parent(bb)
-  }
+  override def set_parent(bb: BasicBlock) = propagate_parent(bb, args)
 
   def ir_form = "call " + callee.full_name + "(" +
                 args.map(_.full_name).mkString(", ") + ")"
@@ -236,6 +241,9 @@ object CastInst {
 class GEPInst(name: Option[String], val fields: List[Value]) extends Instruction(
   name, GEPInst.chase_indexed_type(fields)
 ) {
+  // TODO all the fields?
+  override def set_parent(bb: BasicBlock) = propagate_parent(bb, fields)
+
   // TODO first is a pointer, rest are ints?
   def base = fields.head
   def indices = fields.tail
