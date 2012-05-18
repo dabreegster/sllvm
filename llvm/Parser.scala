@@ -218,8 +218,8 @@ object Parser extends JavaTokenParsers {
             
   def global_id = "@" ~> llvm_id
 
-  def type_decl = local_id ~ "=" ~ lazy_ir_type ^^
-                  { case n~"="~t => {
+  def type_decl = local_id ~ "= type" ~ lazy_ir_type ^^
+                  { case n~_~t => {
                       t.name = Some(n)
                       type_table(n) = t
                       t
@@ -244,9 +244,9 @@ object Parser extends JavaTokenParsers {
                  }
   def function_name = "@" ~> llvm_id
   def param_list = "(" ~> repsep(param_pair, ",") <~ opt(", ...") <~ ")"
-  def param_attrib_ls = rep(param_attrib)
   def param_attrib = ("zeroext" | "signext" | "inreg" | "byval" | "sret" |
                       "noalias" | "nocapture" | "nest")
+  def param_attrib_ls = rep(param_attrib)
   def param_pair = (ir_type ~ param_attrib_ls ~ local_id) ^^
                    { case t~_~n => {
                        val p = new Parameter(Some(n), t)
@@ -278,7 +278,7 @@ object Parser extends JavaTokenParsers {
                  }
   val int_type = """i(\d+)""".r
   def prim_type: Parser[Later[Type]] = ("float" | "double" | "void" | "{}" |
-                                        "type opaque" | int_type | array_type |
+                                        "opaque" | int_type | array_type |
                                         struct_type | local_id) ^^
                   { case "float"        => FloatType()
                     case "double"       => DoubleType()
@@ -286,7 +286,7 @@ object Parser extends JavaTokenParsers {
                     // pops up in a gcc test case, can't tell what it is
                     case "{}"           => StructType(Nil)
                     // it's a forward decl, but dunno what to do with it
-                    case "type opaque"  => VoidType()
+                    case "opaque"  => VoidType()
                     case int_type(bw)   => IntegerType(bw.toInt)
                     case a: ArrayType   => a
                     case s: StructType  => s
@@ -294,7 +294,7 @@ object Parser extends JavaTokenParsers {
                   }
   def array_type: Parser[ArrayType] = "["~>wholeNumber~"x"~lazy_ir_type<~"]" ^^
                    { case num~"x"~t => ArrayType(t, num.toInt) }
-  def struct_type: Parser[StructType] = "type {" ~> repsep(lazy_ir_type, ",") <~ "}" ^^
+  def struct_type: Parser[StructType] = "{" ~> repsep(lazy_ir_type, ",") <~ "}" ^^
                                         { case ls => StructType(ls) }
 
   def bb_header = "; <label>:" ~> wholeNumber ~ "; preds =" ~
@@ -399,7 +399,7 @@ object Parser extends JavaTokenParsers {
 
   // TODO refactor more with normal instruction form
   def bare_const_inst = bare_cast_inst | bare_gep_inst
-  // TODO ^ select, icmp, binary ops of all sorts... listed in the Lang Ref
+  // TODO ^ select, icmp, binary ops of all sorts, listed in the Lang Ref
   def bare_cast_inst = cast_op~"("~single_value~"to"~ir_type~")" ^^
                   { case op~"("~v~"to"~t~")" => ("cast", (op, v, t)) }
   def bare_gep_inst = "getelementptr"~>opt("inbounds")~>arg_list ^^
@@ -425,7 +425,7 @@ object Parser extends JavaTokenParsers {
   def make_const_hex_num(t: Type, n: String): Constant = {
     val exact = BigInt(n.drop(2), 16)
     return t match {
-      // TODO, yes, it throws away the number, but for now...
+      // TODO, yes, it throws away the number, but for now
       case IntegerType(bw) => ConstantInt(exact.toInt, bw)
       case FloatType()  => ConstantFP(exact.toDouble, t)
       case DoubleType() => ConstantFP(exact.toDouble, t)
