@@ -2,9 +2,9 @@ package llvm
 
 import llvm.core._
 import llvm.Util._
-import scala.collection.mutable.HashMap
+import scala.collection.mutable.{HashMap, StringBuilder, MutableList}
 import scala.util.parsing.combinator._
-import java.io.FileReader
+import java.io.{BufferedReader, FileReader}
 
 // TODO oh, decide formatting >_<
 
@@ -13,11 +13,11 @@ object Parser extends JavaTokenParsers {
   // TODO deal with the named instruction nonsense
   // TODO look at llvm grammar and see how close to it we came ;)
 
-  def parse = atonce_parse _
+  //def parse = atonce_parse _
   // Incremental prints progress and is obnoxiously slower
-  //def parse = inc_parse _
+  def parse = inc_parse _
 
-  // straightforward parsing
+  // straightforward parsing. works if the input fits in memory.
   def atonce_parse(fn: String): Module = parseAll(module, new FileReader(fn)) match {
     case Success(mod, rest) => mod
     case err                => throw new Exception("Parsing issue: " + err)
@@ -31,58 +31,117 @@ object Parser extends JavaTokenParsers {
                }
 
   // incremental parsing: inc_parse -> parse_type -> parse_global -> parse_fxn
+  // trick is to read input ourselves and sporkfeed the parser strings
   def bail(err: Any) = {
     print("\n")
     throw new Exception("Parsing issue: " + err)
   }
 
   def inc_parse(fn: String): Module = {
+    // this lets us backtrack
+    val reset_limit = 1024  // TODO
+
     print("Initializing parser...")
-    return parse(module_prelim, new FileReader(fn)) match {
-      case Success(junk, rest) => parse_type(junk, rest)
-      case err => bail(err)
-    }
-  }
-  
-  def parse_type(junk: List[String], in: Input): Module = {
-    print("\rParsing types... at line " + in.pos.line)
-    return parse(type_decl, in) match {
-      case Success(t, rest) => parse_type(junk, rest)
-      // TODO does failure always mean move on?
-      case Failure(_, _) => parse_global(junk, Nil, in)
-      case err => bail(err)
-    }
-  }
+    // TODO add the prints back everywhere
+    val in = new BufferedReader(new FileReader(fn))
 
-  def parse_global(junk: List[String], globals: List[GlobalVariable], in: Input): Module = {
-    print("\rParsing globals... at line " + in.pos.line)
-    return parse(global_def | global_decl, in) match {
-      case Success(g, rest) => parse_global(junk, g :: globals, rest)
-      // TODO does failure always mean move on?
-      case Failure(_, _) => parse_fxn(junk, globals, Nil, in)
-      case err => bail(err)
-    }
-  }
+    // 1) slurp standard first comment line
+    val junk_header = new MutableList[String]()
+    junk_header += in.readLine + "\n"
 
-  def parse_fxn(junk: List[String], globals: List[GlobalVariable],
-                functions: List[(Module) => Function], in: Input): Module =
-  {
-    // TODO print total file length or so
-    print("\rParsing functions... at line " + in.pos.line)
-    return parse(function | fxn_declare, in) match {
-      case Success(f, rest) => parse_fxn(junk, globals, f :: functions, rest)
-      // TODO in.atEnd is never true, so have to do this nonsense!
-      // TODO losing some of the helpful bits of the error message somehow!
-      case Failure(msg, rest) => if (rest.atEnd) {
-                                   print("\n")
-                                   new Module(functions, globals, junk)
-                                 } else {
-                                   // TODO read metadata!
-                                   print("\n")
-                                   throw new Exception("Parsing issue: " + msg)
-                                 }
-      case err => { print("\n"); throw new Exception("Parsing issue: " + err) }
+    // 2) slurp however many target lines there are, skipping newlines
+
+    // this function has the side effect of accumulating the junk_header
+    def slurp_target(): Unit = {
+      in.mark(reset_limit)
+      val line = in.readLine
+      if (line.isEmpty) {
+        // ignore newlines
+        return slurp_target
+      } else if (line.startsWith("target")) {
+        junk_header += line + "\n"
+        return slurp_target
+      } else {
+        // otherwise, stop and back up
+        in.reset
+      }
     }
+    slurp_target
+
+    // 3) slurp type declarations. don't have to accumulate anything; the parser
+    // action populates a table.
+    def slurp_type(): Unit = {
+      in.mark(reset_limit)
+      val line = in.readLine
+      if (line.isEmpty) {
+        slurp_type // skip newlines
+      } else {
+        parse(type_decl, line) match {
+          case Success(_, _) => slurp_type
+          case Failure(_, _) => in.reset
+          case err => bail(err)
+        }
+      }
+    }
+    print("\rSlurping type declarations...")
+    slurp_type
+
+    // 4) slurp globals. we do accumulate these normally, and force tail calls
+    def slurp_global(ls: List[GlobalVariable]): List[GlobalVariable] = {
+      in.mark(reset_limit)
+      val line = in.readLine
+      if (line.isEmpty) {
+        return slurp_global(ls) // skip newlines
+      }
+      return parse(global_def | global_decl, line) match {
+        case Success(g, _) => slurp_global(g :: ls)
+        case Failure(_, _) => { in.reset; ls }
+        case err => bail(err)
+      }
+    }
+    print("\rSlurping globals...")
+    val globals = slurp_global(Nil)
+
+    // 5) slurp functions
+    def slurp_fxn(fxn_string: StringBuilder): (Module) => Function = {
+      val line = in.readLine
+      fxn_string.append(line + "\n")
+      if (line == "}") {
+        return parse(function, fxn_string.toString) match {
+          case Success(f, _) => f
+          case err => bail(err)
+        }
+      } else {
+        return slurp_fxn(fxn_string)
+      }
+    }
+
+    def slurp_functions(ls: List[(Module) => Function]): List[(Module) => Function] = {
+      if (in.ready) {
+        val line = in.readLine
+        if (line.isEmpty) {
+          return slurp_functions(ls)
+        } else if (line.startsWith("declare")) {
+          return parse(fxn_declare, line) match {
+            case Success(f, _) => slurp_functions(f :: ls)
+            case err => bail(err)
+          }
+        } else {
+          print("\nstarting with " + line + " \n")  // TODO
+          // cant detect parse errors with anything above now, because we just
+          // percolate down here.
+
+          return slurp_functions(slurp_fxn(new StringBuilder(line + "\n")) :: ls)
+        }
+      } else {
+        return ls
+      }
+    }
+    print("\rSlurping functions...")
+    val functions = slurp_functions(Nil)
+    print("\n")
+
+    return new Module(functions, globals, junk_header.toList)
   }
 
   // for local values
@@ -116,7 +175,6 @@ object Parser extends JavaTokenParsers {
     }
   }
 
-  def module_prelim = comment ~ rep(target) ^^ { case j1~j2 => j1 :: j2 }
   def comment = """;.*""".r
   def metadata = """!.*""".r
   def target  = """target.*""".r

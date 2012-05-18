@@ -4,6 +4,7 @@
 
 # 1) Get all input to parse
   - scale... how to avoid reading whole file?
+    - benchmark my idea against old impl
 
 # 2) Get all echoed output to match input
   - var-args
