@@ -4,18 +4,33 @@ import llvm.core._
 import llvm.Util._
 import scala.collection.mutable.{HashMap, StringBuilder, MutableList}
 import scala.util.parsing.combinator._
-import java.io.{BufferedReader, FileReader}
+import java.io.{BufferedReader, FileReader, File}
 
 // TODO oh, decide formatting >_<
+
+class PositionalReader(fn: String) extends BufferedReader(new FileReader(fn)) {
+  val length = (new File(fn)).length
+  var position = 0
+
+  override def readLine: String = {
+    val line = super.readLine
+    position += line.length + 1
+    return line
+  }
+
+  def show = {
+    print("\rParsing file... %%%.02f".format(100.0 * (position.toDouble / length.toDouble)))
+  }
+}
 
 // based off http://llvm.org/docs/LangRef.html
 object Parser extends JavaTokenParsers {
   // TODO deal with the named instruction nonsense
   // TODO look at llvm grammar and see how close to it we came ;)
 
-  //def parse = atonce_parse _
+  def parse = atonce_parse _
   // Incremental prints progress and is obnoxiously slower
-  def parse = inc_parse _
+  //def parse = inc_parse _
 
   // straightforward parsing. works if the input fits in memory.
   def atonce_parse(fn: String): Module = parseAll(module, new FileReader(fn)) match {
@@ -41,9 +56,7 @@ object Parser extends JavaTokenParsers {
     // this lets us backtrack
     val reset_limit = 1024  // TODO
 
-    print("Initializing parser...")
-    // TODO add the prints back everywhere
-    val in = new BufferedReader(new FileReader(fn))
+    val in = new PositionalReader(fn)
 
     // 1) slurp standard first comment line
     val junk_header = new MutableList[String]()
@@ -71,6 +84,7 @@ object Parser extends JavaTokenParsers {
     // 3) slurp type declarations. don't have to accumulate anything; the parser
     // action populates a table.
     def slurp_type(): Unit = {
+      in.show
       in.mark(reset_limit)
       val line = in.readLine
       if (line.isEmpty) {
@@ -83,11 +97,11 @@ object Parser extends JavaTokenParsers {
         }
       }
     }
-    print("\rSlurping type declarations...")
     slurp_type
 
     // 4) slurp globals. we do accumulate these normally, and force tail calls
     def slurp_global(ls: List[GlobalVariable]): List[GlobalVariable] = {
+      in.show
       in.mark(reset_limit)
       val line = in.readLine
       if (line.isEmpty) {
@@ -99,7 +113,6 @@ object Parser extends JavaTokenParsers {
         case err => bail(err)
       }
     }
-    print("\rSlurping globals...")
     val globals = slurp_global(Nil)
 
     // 5) slurp functions
@@ -117,6 +130,7 @@ object Parser extends JavaTokenParsers {
     }
 
     def slurp_functions(ls: List[(Module) => Function]): List[(Module) => Function] = {
+      in.show
       if (in.ready) {
         val line = in.readLine
         if (line.isEmpty) {
@@ -127,7 +141,7 @@ object Parser extends JavaTokenParsers {
             case err => bail(err)
           }
         } else {
-          print("\nstarting with " + line + " \n")  // TODO
+          //print("\nstarting with " + line + " \n")  // TODO
           // cant detect parse errors with anything above now, because we just
           // percolate down here.
 
@@ -137,7 +151,6 @@ object Parser extends JavaTokenParsers {
         return ls
       }
     }
-    print("\rSlurping functions...")
     val functions = slurp_functions(Nil)
     print("\n")
 
@@ -264,15 +277,20 @@ object Parser extends JavaTokenParsers {
                    case p~stars => PointerType(p, stars.size)
                  }
   val int_type = """i(\d+)""".r
-  def prim_type: Parser[Later[Type]] = ("float" | "double" | "void" | int_type |
-                                        array_type | struct_type | local_id) ^^
-                  { case "float"       => FloatType()
-                    case "double"      => DoubleType()
-                    case "void"        => VoidType()
-                    case int_type(bw)  => IntegerType(bw.toInt)
-                    case a: ArrayType  => a
-                    case s: StructType => s
-                    case name          => later { type_table(name.toString) }
+  def prim_type: Parser[Later[Type]] = ("float" | "double" | "void" | "{}" |
+                                        "type opaque" | int_type | array_type |
+                                        struct_type | local_id) ^^
+                  { case "float"        => FloatType()
+                    case "double"       => DoubleType()
+                    case "void"         => VoidType()
+                    // pops up in a gcc test case, can't tell what it is
+                    case "{}"           => StructType(Nil)
+                    // it's a forward decl, but dunno what to do with it
+                    case "type opaque"  => VoidType()
+                    case int_type(bw)   => IntegerType(bw.toInt)
+                    case a: ArrayType   => a
+                    case s: StructType  => s
+                    case name           => later { type_table(name.toString) }
                   }
   def array_type: Parser[ArrayType] = "["~>wholeNumber~"x"~lazy_ir_type<~"]" ^^
                    { case num~"x"~t => ArrayType(t, num.toInt) }
