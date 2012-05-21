@@ -29,6 +29,12 @@ class BasicBlock(name: Option[String]) extends Value(name, LabelType()) {
       // split this BB into two
       // TODO make sure we stitch up ALL the references?
       val bb1 = new BasicBlock(name).setup(header, end, preds)
+      // stitch up the succs of our preds
+      for (pred <- preds) {
+        pred.term_inst.succs -= this
+        pred.term_inst.succs += bb1
+      }
+
       val bb2 = new BasicBlock(Some(name.get + "'")).setup(
         rest, term_inst, List(bb1)
       )

@@ -1,5 +1,7 @@
 package llvm.core
 
+import scala.collection.mutable.{HashSet => MutableSet}
+
 import llvm.Util._
 
 class Function(name: Option[String], val ret_type: Type,
@@ -42,4 +44,26 @@ class Function(name: Option[String], val ret_type: Type,
                     name.get, this, blocks.map(bb => bb.outline_graphviz).mkString("")
                   )
   def instructions = blocks.flatMap(b => b.instructions)
+  def is_root() = name.get == "main"
+  // what do we call directly?
+  def direct_calls: Set[Function] = instructions.flatMap(i => i match {
+    case CallInst(callee, _) => Some(callee)
+    case _ => None
+  }).toSet
+
+  // cache it once we've requested it
+  lazy val rpo_order: List[BasicBlock] = {
+    // TODO check correctness...
+    val visited = new MutableSet[BasicBlock]()
+
+    def dfs(node: BasicBlock): List[BasicBlock] = {
+      visited += node
+      return node.succs.toList.flatMap(s => if (visited(s)) Nil else dfs(s)) ++ List(node)
+    }
+
+    val order = dfs(blocks.head).reverse
+    assert(visited.size == blocks.size)   // did we reach it all?
+    order
+  }
+  // TODO lazily give dom frontiers
 }
